@@ -124,13 +124,12 @@ int main (int argc, char **argv)
     next_seqno = 0;
     while (1)
     {
-        len = fread(buffer, 1, DATA_SIZE, fp);
-        if ( len <= 0)
+        len = fread(buffer, 1, DATA_SIZE, fp);                                  // fread stores an amount of DATA_SIZE bytes into the buffer
+        if (len <= 0)                                                           // if len <= 0 it means that there is nothing else to read, so sedn a final packet to the receiver explainign that it is end of file
         {
             VLOG(INFO, "End Of File has been reached");
             sndpkt = make_packet(0);
-            sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0,
-                    (const struct sockaddr *)&serveraddr, serverlen);
+            sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (const struct sockaddr *)&serveraddr, serverlen);
             break;
         }
         send_base = next_seqno;
@@ -148,8 +147,7 @@ int main (int argc, char **argv)
              * will assign a random port number so that server can send its
              * response to the src port.
              */
-            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, 
-                        ( const struct sockaddr *)&serveraddr, serverlen) < 0)
+            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             {
                 error("sendto");
             }
@@ -160,8 +158,7 @@ int main (int argc, char **argv)
 
             do
             {
-                if(recvfrom(sockfd, buffer, MSS_SIZE, 0,
-                            (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)
+                if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)
                 {
                     error("recvfrom");
                 }
