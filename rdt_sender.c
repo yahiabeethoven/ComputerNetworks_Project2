@@ -154,6 +154,11 @@ int main (int argc, char **argv)
         if (num_window != 10)                                                   // it can accept one more unacked 
         {
             len = fread(buffer, 1, DATA_SIZE, fp);
+
+            arguments[cThread].length = len;
+            strcpy(arguments[cThread].buff, buffer);
+            arguments[cThread].ptr = fp;
+
             
             if (pthread_create(&threads[cThread], NULL, &send_packet_wait_ack, (void *) &arguments[cThread]) != 0) // create thread and pass argument
                 break;
