@@ -10,6 +10,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <assert.h>
+#include<pthread.h>
 
 #include"packet.h"
 #include"common.h"
@@ -17,16 +18,26 @@
 #define STDIN_FD    0
 #define RETRY  120 //millisecond
 
-int next_seqno=0;
-int send_base=0;
-int window_size = 1;
+int next_seqno = 0;
+int send_base = 0;
+int window_size = 10;
 
 int sockfd, serverlen;
 struct sockaddr_in serveraddr;
 struct itimerval timer; 
 tcp_packet *sndpkt;
 tcp_packet *recvpkt;
-sigset_t sigmask;       
+sigset_t sigmask;   
+
+struct args_for_function
+{
+    int length;
+    char buff[DATA_SIZE];
+    FILE* ptr;
+    int send_base_;
+    int next_seqno_;
+    int retr_value;
+};
 
 
 void resend_packets(int sig)
@@ -75,6 +86,11 @@ void init_timer(int delay, void (*sig_handler)(int))
     sigaddset(&sigmask, SIGALRM);
 }
 
+void *send_packet_wait_ack (void *args) 
+{
+
+}
+
 
 int main (int argc, char **argv)
 {
@@ -120,8 +136,33 @@ int main (int argc, char **argv)
 
     //Stop and wait protocol
 
-    init_timer(RETRY, resend_packets);
+    int window[window_size];                                                    // window of unacked elements with maximum size the window size
+    int num_window = 0;                                                         // current position where the first empty position is
+    
+    for (int i = 0; i<window_size; i++) 
+    {
+        window[i] = -1;
+    }
+
+    int cThread = 0;                                                            // number to keep track of which thread is currently free
+    pthread_t threads[window_size];                                             // threads to send the packet and wait for the ACK
+    struct args_for_function arguments[window_size];
+
     next_seqno = 0;
+    while (1) 
+    {
+        if (num_window != 10)                                                   // it can accept one more unacked 
+        {
+            len = fread(buffer, 1, DATA_SIZE, fp);
+            
+            if (pthread_create(&threads[cThread], NULL, &send_packet_wait_ack, (void *) &arguments[cThread]) != 0) // create thread and pass argument
+                break;
+            window[num_window++] = ;
+        }
+    }
+
+    init_timer(RETRY, resend_packets);
+
     while (1)
     {
         len = fread(buffer, 1, DATA_SIZE, fp);                                  // fread stores an amount of DATA_SIZE bytes into the buffer
