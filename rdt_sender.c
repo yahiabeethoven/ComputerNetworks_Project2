@@ -34,9 +34,8 @@ struct args_for_function
     int length;
     char buff[DATA_SIZE];
     FILE* ptr;
-    int send_base_;
-    int next_seqno_;
-    int retr_value;
+    int current_value;
+    int return_value;
 };
 
 
@@ -86,9 +85,60 @@ void init_timer(int delay, void (*sig_handler)(int))
     sigaddset(&sigmask, SIGALRM);
 }
 
-void *send_packet_wait_ack (void *args) 
+void *send_packet_wait_ack (void *arguments) 
 {
+    struct args_for_function * args = (struct args_for_function *) arguments;
+    int len = args->length;
+    char buffer[DATA_SIZE];
+    strcpy(buffer, args->buffer);
+    char current_val = args->current_value;                              
+    if (len <= 0)                                                           // if len <= 0 it means that there is nothing else to read, so sedn a final packet to the receiver explainign that it is end of file
+    {
+        VLOG(INFO, "End Of File has been reached");
+        sndpkt = make_packet(0);
+        sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (const struct sockaddr *)&serveraddr, serverlen);
+        break;
+    }
+    sndpkt = make_packet(len);
+    memcpy(sndpkt->data, buffer, len);
+    sndpkt->hdr.seqno = send_base;
+    //Wait for ACK
+    do {
 
+        VLOG(DEBUG, "Sending packet %d to %s", 
+                send_base, inet_ntoa(serveraddr.sin_addr));
+        /*
+            * If the sendto is called for the first time, the system will
+            * will assign a random port number so that server can send its
+            * response to the src port.
+            */
+        if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
+        {
+            error("sendto");
+        }
+
+        start_timer();
+        //ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
+        //struct sockaddr *src_addr, socklen_t *addrlen);
+
+        do
+        {
+            if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)
+            {
+                error("recvfrom");
+            }
+
+            recvpkt = (tcp_packet *)buffer;
+            printf("%d \n", get_data_size(recvpkt));
+            assert(get_data_size(recvpkt) <= DATA_SIZE);
+        }while(recvpkt->hdr.ackno < next_seqno);    //ignore duplicate ACKs
+        stop_timer();
+        /*resend pack if don't recv ACK */
+    } while(recvpkt->hdr.ackno != next_seqno);      
+    free(sndpkt);
+
+    args->
+    pthread_exit(NULL);
 }
 
 
@@ -148,6 +198,7 @@ int main (int argc, char **argv)
     pthread_t threads[window_size];                                             // threads to send the packet and wait for the ACK
     struct args_for_function arguments[window_size];
 
+    send_base = 0;
     next_seqno = 0;
     while (1) 
     {
@@ -158,11 +209,14 @@ int main (int argc, char **argv)
             arguments[cThread].length = len;
             strcpy(arguments[cThread].buff, buffer);
             arguments[cThread].ptr = fp;
+            arguments[cThread].current_value = next_seqno;
+            arguments[cThread].return_value = 0;
 
+            window[num_window++] = next_seqno;
+            next_seqno += len;
             
             if (pthread_create(&threads[cThread], NULL, &send_packet_wait_ack, (void *) &arguments[cThread]) != 0) // create thread and pass argument
                 break;
-            window[num_window++] = ;
         }
     }
 
