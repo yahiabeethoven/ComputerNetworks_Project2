@@ -187,7 +187,6 @@ int main (int argc, char **argv)
     //Stop and wait protocol
 
     int window[window_size];                                                    // window of unacked elements with maximum size the window size
-    int num_window = 0;                                                         // current position where the first empty position is
     
     for (int i = 0; i<window_size; i++) 
     {
@@ -198,11 +197,13 @@ int main (int argc, char **argv)
     pthread_t threads[window_size];                                             // threads to send the packet and wait for the ACK
     struct args_for_function arguments[window_size];
 
+    int whichFound;
+
     send_base = 0;
     next_seqno = 0;
     while (1) 
     {
-        if (num_window != 10)                                                   // it can accept one more unacked 
+        if (window[window_size - 1] == -1)                                                   // it can accept one more unacked 
         {
             len = fread(buffer, 1, DATA_SIZE, fp);
 
@@ -210,13 +211,60 @@ int main (int argc, char **argv)
             strcpy(arguments[cThread].buff, buffer);
             arguments[cThread].ptr = fp;
             arguments[cThread].current_value = next_seqno;
-            arguments[cThread].return_value = 0;
+            arguments[cThread].return_value = -1;
 
-            window[num_window++] = next_seqno;
+            for (int i = 0; i < window_size; i++) 
+            {
+                if (window[i] == -1) 
+                {
+                    window[i] = next_seqno;
+                    break;
+                }
+            }
             next_seqno += len;
             
             if (pthread_create(&threads[cThread], NULL, &send_packet_wait_ack, (void *) &arguments[cThread]) != 0) // create thread and pass argument
                 break;
+
+            usleep(1000);
+        }
+
+        whichFound = -1;
+        for (int i = 0; i < window_size; i++) 
+        {
+            if (arguments[i].return_value != -1) 
+            {
+                for (int j = 0; j < window_size; j++) 
+                {
+                    if (window[j] == arguments[i].return_value - arguments[i].length && window[j] > send_base) 
+                    {
+                        send_base = window[j];
+                        for (int k = j; k<window_size; k++) 
+                        {
+                            window[k-j] = window[k];
+                        }
+                    }
+                }
+            }
+            if (arguments[i].return_value != -1 && whichFound == -1) 
+            {
+                whichFound = arguments[i].return_value - arguments[i].length;
+            }
+            if (send_base == arguments[i].return_value - arguments[i].length) 
+            {
+                for (int j = 1; j < window_size; j ++) 
+                {
+                    window[j - 1] = window[j];
+                }
+                window[window_size - 1] = -1;
+                send_base = window[0];
+                whichFound = -1;
+                break;
+            }
+        }
+        if (whichFound != -1) 
+        {
+
         }
     }
 
