@@ -10,7 +10,6 @@
 #include <sys/time.h>
 #include <time.h>
 #include <assert.h>
-#include<pthread.h>
 
 #include"packet.h"
 #include"common.h"
@@ -18,26 +17,29 @@
 #define STDIN_FD    0
 #define RETRY  120 //millisecond
 
-int next_seqno = 0;
-int send_base = 0;
+int next_seqno=0;
+int send_base=0;
 int window_size = 10;
+int current_packet = 0
 
 int sockfd, serverlen;
 struct sockaddr_in serveraddr;
 struct itimerval timer; 
 tcp_packet *sndpkt;
 tcp_packet *recvpkt;
-sigset_t sigmask;   
+sigset_t sigmask;       
 
-struct args_for_function
+
+struct args_send_packet
 {
     int length;
     char buff[DATA_SIZE];
-    FILE* ptr;
     int current_value;
-    int return_value;
 };
 
+void *send_packet (void *arguments) {
+
+}
 
 void resend_packets(int sig)
 {
@@ -85,62 +87,6 @@ void init_timer(int delay, void (*sig_handler)(int))
     sigaddset(&sigmask, SIGALRM);
 }
 
-void *send_packet_wait_ack (void *arguments) 
-{
-    struct args_for_function * args = (struct args_for_function *) arguments;
-    int len = args->length;
-    char buffer[DATA_SIZE];
-    strcpy(buffer, args->buffer);
-    char current_val = args->current_value;                              
-    if (len <= 0)                                                           // if len <= 0 it means that there is nothing else to read, so sedn a final packet to the receiver explainign that it is end of file
-    {
-        VLOG(INFO, "End Of File has been reached");
-        sndpkt = make_packet(0);
-        sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (const struct sockaddr *)&serveraddr, serverlen);
-        break;
-    }
-    sndpkt = make_packet(len);
-    memcpy(sndpkt->data, buffer, len);
-    sndpkt->hdr.seqno = send_base;
-    //Wait for ACK
-    do {
-
-        VLOG(DEBUG, "Sending packet %d to %s", 
-                send_base, inet_ntoa(serveraddr.sin_addr));
-        /*
-            * If the sendto is called for the first time, the system will
-            * will assign a random port number so that server can send its
-            * response to the src port.
-            */
-        if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
-        {
-            error("sendto");
-        }
-
-        start_timer();
-        //ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
-        //struct sockaddr *src_addr, socklen_t *addrlen);
-
-        do
-        {
-            if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)
-            {
-                error("recvfrom");
-            }
-
-            recvpkt = (tcp_packet *)buffer;
-            printf("%d \n", get_data_size(recvpkt));
-            assert(get_data_size(recvpkt) <= DATA_SIZE);
-        }while(recvpkt->hdr.ackno < next_seqno);    //ignore duplicate ACKs
-        stop_timer();
-        /*resend pack if don't recv ACK */
-    } while(recvpkt->hdr.ackno != next_seqno);      
-    free(sndpkt);
-
-    args->
-    pthread_exit(NULL);
-}
-
 
 int main (int argc, char **argv)
 {
@@ -186,98 +132,47 @@ int main (int argc, char **argv)
 
     //Stop and wait protocol
 
-    int window[window_size];                                                    // window of unacked elements with maximum size the window size
-    
-    for (int i = 0; i<window_size; i++) 
-    {
-        window[i] = -1;
-    }
-
-    int cThread = 0;                                                            // number to keep track of which thread is currently free
-    pthread_t threads[window_size];                                             // threads to send the packet and wait for the ACK
-    struct args_for_function arguments[window_size];
-
-    int whichFound;
-
-    send_base = 0;
-    next_seqno = 0;
-    while (1) 
-    {
-        if (window[window_size - 1] == -1)                                                   // it can accept one more unacked 
-        {
-            len = fread(buffer, 1, DATA_SIZE, fp);
-
-            arguments[cThread].length = len;
-            strcpy(arguments[cThread].buff, buffer);
-            arguments[cThread].ptr = fp;
-            arguments[cThread].current_value = next_seqno;
-            arguments[cThread].return_value = -1;
-
-            for (int i = 0; i < window_size; i++) 
-            {
-                if (window[i] == -1) 
-                {
-                    window[i] = next_seqno;
-                    break;
-                }
-            }
-            next_seqno += len;
-            
-            if (pthread_create(&threads[cThread], NULL, &send_packet_wait_ack, (void *) &arguments[cThread]) != 0) // create thread and pass argument
-                break;
-
-            usleep(1000);
-        }
-
-        whichFound = -1;
-        for (int i = 0; i < window_size; i++) 
-        {
-            if (arguments[i].return_value != -1) 
-            {
-                for (int j = 0; j < window_size; j++) 
-                {
-                    if (window[j] == arguments[i].return_value - arguments[i].length && window[j] > send_base) 
-                    {
-                        send_base = window[j];
-                        for (int k = j; k<window_size; k++) 
-                        {
-                            window[k-j] = window[k];
-                        }
-                    }
-                }
-            }
-            if (arguments[i].return_value != -1 && whichFound == -1) 
-            {
-                whichFound = arguments[i].return_value - arguments[i].length;
-            }
-            if (send_base == arguments[i].return_value - arguments[i].length) 
-            {
-                for (int j = 1; j < window_size; j ++) 
-                {
-                    window[j - 1] = window[j];
-                }
-                window[window_size - 1] = -1;
-                send_base = window[0];
-                whichFound = -1;
-                break;
-            }
-        }
-        if (whichFound != -1) 
-        {
-
-        }
-    }
-
     init_timer(RETRY, resend_packets);
+
+    pthread_t threads[2];                                                               // create two threads, one for sending the data and one for receving ACKs
+    struct args_send_packet arguments_send;                                             // create a structure with the data to send to the function when the thread is created
+
+    int window[window_size];                                                            // create a window with the ID of every packet being sent
+    for (int i=0; i<window_size; i++)                                                   // set every element in the window to -1 to show that it is empty
+        window[i] = -1;
+
+    while (1) {
+        // SEND PACKAGES:
+        if (window[-1] == -1) {                                                         // if the last element in the window is -1 it means that the window is not full, so send a new package
+            len = fread(buffer, 1, DATA_SIZE, fp);
+            
+            for (int i=0; i<window_size; i++) {                                         // get the position of the window in which the next paacket ID will be located
+                if (window[i] == -1)
+                    window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
+                    arguments_send.current_value = next_seqno;
+                    break;
+            }
+
+            next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
+
+            strcpy(arguments_send.buff, buffer);                                        // let the buffer in the structure be the buffer received by the fread function
+            arguments_send.length = len;                                                // let the length in the structure be the length of the packet
+
+            if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_send) != 0)    // create thread to send the package
+                break;
+        }
+        // create a thread for receiving acknowledgements
+    }
 
     while (1)
     {
-        len = fread(buffer, 1, DATA_SIZE, fp);                                  // fread stores an amount of DATA_SIZE bytes into the buffer
-        if (len <= 0)                                                           // if len <= 0 it means that there is nothing else to read, so sedn a final packet to the receiver explainign that it is end of file
+        len = fread(buffer, 1, DATA_SIZE, fp);
+        if ( len <= 0)
         {
             VLOG(INFO, "End Of File has been reached");
             sndpkt = make_packet(0);
-            sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (const struct sockaddr *)&serveraddr, serverlen);
+            sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0,
+                    (const struct sockaddr *)&serveraddr, serverlen);
             break;
         }
         send_base = next_seqno;
@@ -295,7 +190,8 @@ int main (int argc, char **argv)
              * will assign a random port number so that server can send its
              * response to the src port.
              */
-            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
+            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, 
+                        ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             {
                 error("sendto");
             }
@@ -306,7 +202,8 @@ int main (int argc, char **argv)
 
             do
             {
-                if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)
+                if(recvfrom(sockfd, buffer, MSS_SIZE, 0,
+                            (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)
                 {
                     error("recvfrom");
                 }
