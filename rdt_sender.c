@@ -17,28 +17,118 @@
 #define STDIN_FD    0
 #define RETRY  120 //millisecond
 
-int next_seqno=0;
-int send_base=0;
-int window_size = 10;
-int current_packet = 0
+int next_seqno = 0;
+int send_base = 0;
+const int window_size = 10;
+int current_packet = 0;
 
 int sockfd, serverlen;
 struct sockaddr_in serveraddr;
 struct itimerval timer; 
 tcp_packet *sndpkt;
 tcp_packet *recvpkt;
-sigset_t sigmask;       
+sigset_t sigmask;
 
+int window[window_size];                                                                // create a window with the ID of every packet being sent
+int lens[window_size];   
 
 struct args_send_packet
 {
-    int length;
-    char buff[DATA_SIZE];
-    int current_value;
+    FILE *file;
 };
 
-void *send_packet (void *arguments) {
+struct args_rec_ack {
+    // int ack;
+};
 
+void *send_packet (void *arguments) 
+{
+    struct args_send_packet * args = (struct args_send_packet *) arguments;
+
+    int len;
+    char buffer[DATA_SIZE];
+    FILE *fp = args->file;
+
+    send_base = 0;
+    next_seqno = 0;
+
+    while (1) 
+    {
+        if (window[-1] == -1) {                                                         // if the last element in the window is -1 it means that the window is not full, so send a new package
+            len = fread(buffer, 1, DATA_SIZE, fp);
+
+            for (int i=0; i<window_size; i++) {                                         // get the position of the window in which the next paacket ID will be located
+                if (window[i] == -1) 
+                {
+                    window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
+                    lens[i] = len;
+                    break;
+                }
+            }
+
+            if ( len <= 0)
+            {
+                VLOG(INFO, "End Of File has been reached");
+                sndpkt = make_packet(0);
+                sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
+                break;
+            }
+            
+            send_base = window[0];                                                      // the send base will always be the first element in the window
+            next_seqno = send_base + len;                                               // the next sequence number is increased by the size of the package sent
+            sndpkt = make_packet(len);
+            memcpy(sndpkt->data, buffer, len);
+            sndpkt->hdr.seqno = send_base;
+
+            VLOG (DEBUG, "Sending packet %d to %s\n", send_base, inet_ntoa(serveraddr.sin_addr));
+
+            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
+            {
+                error("sendto");
+            }
+        }
+    }
+}
+
+void *receive_ack (void *arguments) 
+{
+    int ack = -1;
+    char buffer[DATA_SIZE]; 
+
+    while (1) 
+    {
+        if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)     // receive packet from the reeiver containing the ACk
+        {
+            error("recvfrom");
+        }
+
+        recvpkt = (tcp_packet *)buffer;                                                 // create a packet with the data received by the receiver
+        printf("%d \n", get_data_size(recvpkt));
+        assert(get_data_size(recvpkt) <= DATA_SIZE);
+        ack = recvpkt->hdr.ackno;                                                       // assign the acknowledgment recived to the local variable containing the variable
+
+        if (ack != -1) 
+        {
+            for (int i=0; i<window_size; i++) 
+            {
+                if (window[i] == ack - lens[i] && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
+                {
+                    send_base = window[i];                                              // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
+                    for (int j = i; j<window_size; j++) 
+                    {
+                        window[j-i] = window[j];                                        // move up all of the packets to let the i position be first
+                        lens[j-i] = lens[j];                                            // same thing for the lengths
+
+                        window[i - j - 1] = -1;                                         // let the i number of elements trailing in the window be free
+                        lens[i - j -1] = -1;                                            // same but for the lengths
+
+                        VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i);
+                    }
+                }
+            }
+        }
+        ack = -1;
+    }
 }
 
 void resend_packets(int sig)
@@ -136,88 +226,19 @@ int main (int argc, char **argv)
 
     pthread_t threads[2];                                                               // create two threads, one for sending the data and one for receving ACKs
     struct args_send_packet arguments_send;                                             // create a structure with the data to send to the function when the thread is created
+    struct args_rec_ack arguments_receive;
 
     int window[window_size];                                                            // create a window with the ID of every packet being sent
     for (int i=0; i<window_size; i++)                                                   // set every element in the window to -1 to show that it is empty
         window[i] = -1;
 
-    while (1) {
-        // SEND PACKAGES:
-        if (window[-1] == -1) {                                                         // if the last element in the window is -1 it means that the window is not full, so send a new package
-            len = fread(buffer, 1, DATA_SIZE, fp);
-            
-            for (int i=0; i<window_size; i++) {                                         // get the position of the window in which the next paacket ID will be located
-                if (window[i] == -1)
-                    window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
-                    arguments_send.current_value = next_seqno;
-                    break;
-            }
+    arguments_send.file = fp;
 
-            next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
+    if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_send) != 0)    // create thread to send the package
+        printf("Error creating the thread to send the packets\n");
 
-            strcpy(arguments_send.buff, buffer);                                        // let the buffer in the structure be the buffer received by the fread function
-            arguments_send.length = len;                                                // let the length in the structure be the length of the packet
-
-            if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_send) != 0)    // create thread to send the package
-                break;
-        }
-        // create a thread for receiving acknowledgements
-    }
-
-    while (1)
-    {
-        len = fread(buffer, 1, DATA_SIZE, fp);
-        if ( len <= 0)
-        {
-            VLOG(INFO, "End Of File has been reached");
-            sndpkt = make_packet(0);
-            sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0,
-                    (const struct sockaddr *)&serveraddr, serverlen);
-            break;
-        }
-        send_base = next_seqno;
-        next_seqno = send_base + len;
-        sndpkt = make_packet(len);
-        memcpy(sndpkt->data, buffer, len);
-        sndpkt->hdr.seqno = send_base;
-        //Wait for ACK
-        do {
-
-            VLOG(DEBUG, "Sending packet %d to %s", 
-                    send_base, inet_ntoa(serveraddr.sin_addr));
-            /*
-             * If the sendto is called for the first time, the system will
-             * will assign a random port number so that server can send its
-             * response to the src port.
-             */
-            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, 
-                        ( const struct sockaddr *)&serveraddr, serverlen) < 0)
-            {
-                error("sendto");
-            }
-
-            start_timer();
-            //ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
-            //struct sockaddr *src_addr, socklen_t *addrlen);
-
-            do
-            {
-                if(recvfrom(sockfd, buffer, MSS_SIZE, 0,
-                            (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)
-                {
-                    error("recvfrom");
-                }
-
-                recvpkt = (tcp_packet *)buffer;
-                printf("%d \n", get_data_size(recvpkt));
-                assert(get_data_size(recvpkt) <= DATA_SIZE);
-            }while(recvpkt->hdr.ackno < next_seqno);    //ignore duplicate ACKs
-            stop_timer();
-            /*resend pack if don't recv ACK */
-        } while(recvpkt->hdr.ackno != next_seqno);      
-
-        free(sndpkt);
-    }
+    if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_receive) != 0)  // create thread to receive ACKs
+        printf("Error creating the thread to receive ACKs\n");
 
     return 0;
 
