@@ -31,7 +31,7 @@ tcp_packet *recvpkt;
 sigset_t sigmask;
 
 int window[window_size];                                                                // create a window with the ID of every packet being sent
-struct tcp_packet *window_packets[window_size];
+tcp_packet *window_packets[window_size];
 int access_window;                                                                      // bool to decide who is acessing the window at a time: the sender or receiver
 int lens[window_size];                                                                  // create a list of lengths 
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
@@ -44,6 +44,54 @@ struct args_send_packet
 struct args_rec_ack {
     // int ack;
 };
+
+
+void resend_packets(int sig)
+{
+    if (sig == SIGALRM)
+    {
+        for (int i=0;i<window_size;i++) {
+            if (window[i] == -1)
+                break;
+
+            sndpkt = window_packets[i];                                                 // fetch the packet from the list of pointers containing the packets
+            VLOG(INFO, "Timeout happend");
+            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
+                error("sendto");
+        }
+    }
+}
+
+
+void start_timer()
+{
+    sigprocmask(SIG_UNBLOCK, &sigmask, NULL);
+    setitimer(ITIMER_REAL, &timer, NULL);
+}
+
+
+void stop_timer()
+{
+    sigprocmask(SIG_BLOCK, &sigmask, NULL);
+}
+
+
+/*
+ * init_timer: Initialize timer
+ * delay: delay in milliseconds
+ * sig_handler: signal handler function for re-sending unACKed packets
+ */
+void init_timer(int delay, void (*sig_handler)(int)) 
+{
+    signal(SIGALRM, resend_packets);
+    timer.it_interval.tv_sec = delay / 1000;    // sets an interval of the timer
+    timer.it_interval.tv_usec = (delay % 1000) * 1000;  
+    timer.it_value.tv_sec = delay / 1000;       // sets an initial value
+    timer.it_value.tv_usec = (delay % 1000) * 1000;
+
+    sigemptyset(&sigmask);
+    sigaddset(&sigmask, SIGALRM);
+}
 
 void *send_packet (void *arguments) 
 {
@@ -169,53 +217,6 @@ void *receive_ack (void *arguments)
         ack = -1;
     }
     return NULL;
-}
-
-void resend_packets(int sig)
-{
-    if (sig == SIGALRM)
-    {
-        for (int i=0;i<window_size;i++) {
-            if (window[i] == -1)
-                break;
-
-            sndpkt = window_packets[i];                                                 // fetch the packet from the list of pointers containing the packets
-            VLOG(INFO, "Timeout happend");
-            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
-                error("sendto");
-        }
-    }
-}
-
-
-void start_timer()
-{
-    sigprocmask(SIG_UNBLOCK, &sigmask, NULL);
-    setitimer(ITIMER_REAL, &timer, NULL);
-}
-
-
-void stop_timer()
-{
-    sigprocmask(SIG_BLOCK, &sigmask, NULL);
-}
-
-
-/*
- * init_timer: Initialize timer
- * delay: delay in milliseconds
- * sig_handler: signal handler function for re-sending unACKed packets
- */
-void init_timer(int delay, void (*sig_handler)(int)) 
-{
-    signal(SIGALRM, resend_packets);
-    timer.it_interval.tv_sec = delay / 1000;    // sets an interval of the timer
-    timer.it_interval.tv_usec = (delay % 1000) * 1000;  
-    timer.it_value.tv_sec = delay / 1000;       // sets an initial value
-    timer.it_value.tv_usec = (delay % 1000) * 1000;
-
-    sigemptyset(&sigmask);
-    sigaddset(&sigmask, SIGALRM);
 }
 
 
