@@ -30,7 +30,7 @@ $(CLIENT):	$(CLIENT_OBJECTS)
 	$(LINKER)  $@  $(CLIENT_OBJECTS)
 	@echo "Link complete!"
 
-$(SERVER):	$(SERVER_OBJECTS)
+$(SERVER): $(SERVER_OBJECTS)
 	$(LINKER)  $@  $(SERVER_OBJECTS)
 	@echo "Link complete!"
 
