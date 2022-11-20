@@ -10,6 +10,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <assert.h>
+#include <pthread.h>
 
 #include"packet.h"
 #include"common.h"
@@ -30,7 +31,8 @@ tcp_packet *recvpkt;
 sigset_t sigmask;
 
 int window[window_size];                                                                // create a window with the ID of every packet being sent
-int lens[window_size];   
+int access_window;
+int lens[window_size];                                                                  // create a list of lengths 
 
 struct args_send_packet
 {
@@ -54,7 +56,8 @@ void *send_packet (void *arguments)
 
     while (1) 
     {
-        if (window[-1] == -1) {                                                         // if the last element in the window is -1 it means that the window is not full, so send a new package
+        if (window[window_size - 1] == -1 && access_window == 0) {                      // if the last element in the window is -1 it means that the window is not full, so send a new package
+            access_window = 1;                                                          // because the access window bool is true, it means that the sender function can access and change the window, so turn to false so the receiver can not access the window at the same time
             len = fread(buffer, 1, DATA_SIZE, fp);
 
             for (int i=0; i<window_size; i++) {                                         // get the position of the window in which the next paacket ID will be located
@@ -71,7 +74,7 @@ void *send_packet (void *arguments)
                 VLOG(INFO, "End Of File has been reached");
                 sndpkt = make_packet(0);
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
-                break;
+                return NULL;
             }
             
             send_base = window[0];                                                      // the send base will always be the first element in the window
@@ -86,8 +89,11 @@ void *send_packet (void *arguments)
             {
                 error("sendto");
             }
+            access_window = 0;                                                          // let the receiver function access the window
         }
+        usleep(100);
     }
+    return NULL;
 }
 
 void *receive_ack (void *arguments) 
@@ -109,6 +115,14 @@ void *receive_ack (void *arguments)
 
         if (ack != -1) 
         {
+            while (access_window == 1)                                                  // function to wait for the sender function to free the window array (so the functions to not access it at the same time)
+            {
+                if (access_window == 0)                                                 // when the access window bool turns to 0 it means it is free, so it can be changed
+                {
+                    break;
+                }
+            }
+            access_window = 1;
             for (int i=0; i<window_size; i++) 
             {
                 if (window[i] == ack - lens[i] && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
@@ -126,9 +140,11 @@ void *receive_ack (void *arguments)
                     }
                 }
             }
+            access_window = 0;
         }
         ack = -1;
     }
+    return NULL;
 }
 
 void resend_packets(int sig)
@@ -180,10 +196,8 @@ void init_timer(int delay, void (*sig_handler)(int))
 
 int main (int argc, char **argv)
 {
-    int portno, len;
-    int next_seqno;
+    int portno;
     char *hostname;
-    char buffer[DATA_SIZE];
     FILE *fp;
 
     /* check command line arguments */
@@ -231,13 +245,13 @@ int main (int argc, char **argv)
     int window[window_size];                                                            // create a window with the ID of every packet being sent
     for (int i=0; i<window_size; i++)                                                   // set every element in the window to -1 to show that it is empty
         window[i] = -1;
-
+    access_window = 0;                                                                  // only let one of the functions access the window at a time to avoid problems
     arguments_send.file = fp;
 
     if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_send) != 0)    // create thread to send the package
         printf("Error creating the thread to send the packets\n");
 
-    if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_receive) != 0)  // create thread to receive ACKs
+    if (pthread_create(&threads[1], NULL, &receive_ack, (void *) &arguments_receive) != 0)  // create thread to receive ACKs
         printf("Error creating the thread to receive ACKs\n");
 
     return 0;
