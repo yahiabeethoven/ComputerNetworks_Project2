@@ -84,18 +84,25 @@ int main(int argc, char **argv) {
     VLOG(DEBUG, "epoch time, bytes received, sequence number");
 
     clientlen = sizeof(clientaddr);
+    int current_packet = 0;
+
     while (1) {
         /*
          * recvfrom: receive a UDP datagram from a client
          */
         //VLOG(DEBUG, "waiting from server \n");
-        if (recvfrom(sockfd, buffer, MSS_SIZE, 0,
-                (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0) {
+        if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)
             error("ERROR in recvfrom");
-        }
         recvpkt = (tcp_packet *) buffer;
         assert(get_data_size(recvpkt) <= DATA_SIZE);
-        if ( recvpkt->hdr.data_size == 0) {
+
+
+        if (current_packet != recvpkt->hdr.seqno)                                               // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
+            continue;
+        else
+            current_packet += recvpkt->hdr.data_size;                                           // if it is the packet expected, then send acknowledgement
+
+        if (recvpkt->hdr.data_size == 0) {
             //VLOG(INFO, "End Of File has been reached");
             fclose(fp);
             break;
@@ -111,8 +118,7 @@ int main(int argc, char **argv) {
         sndpkt = make_packet(0);
         sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
         sndpkt->hdr.ctr_flags = ACK;
-        if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, 
-                (struct sockaddr *) &clientaddr, clientlen) < 0) {
+        if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
             error("ERROR in sendto");
         }
     }
