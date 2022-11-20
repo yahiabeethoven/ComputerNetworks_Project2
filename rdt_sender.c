@@ -21,7 +21,7 @@
 int next_seqno = 0;
 int send_base = 0;
 const int window_size = 10;
-int current_packet = 0;
+int location = 0;
 
 int sockfd, serverlen;
 struct sockaddr_in serveraddr;
@@ -31,8 +31,10 @@ tcp_packet *recvpkt;
 sigset_t sigmask;
 
 int window[window_size];                                                                // create a window with the ID of every packet being sent
-int access_window;
+struct tcp_packet *window_packets[window_size];
+int access_window;                                                                      // bool to decide who is acessing the window at a time: the sender or receiver
 int lens[window_size];                                                                  // create a list of lengths 
+int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
 
 struct args_send_packet
 {
@@ -53,18 +55,24 @@ void *send_packet (void *arguments)
 
     send_base = 0;
     next_seqno = 0;
+    stopTimer = 1;
 
     while (1) 
     {
+        if (window[0] == -1)
+            stop_timer();                                                               // if there are no packets waiting to be ACKed, then stop the timer
+
         if (window[window_size - 1] == -1 && access_window == 0) {                      // if the last element in the window is -1 it means that the window is not full, so send a new package
             access_window = 1;                                                          // because the access window bool is true, it means that the sender function can access and change the window, so turn to false so the receiver can not access the window at the same time
             len = fread(buffer, 1, DATA_SIZE, fp);
+
 
             for (int i=0; i<window_size; i++) {                                         // get the position of the window in which the next paacket ID will be located
                 if (window[i] == -1) 
                 {
                     window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
                     lens[i] = len;
+                    location = i;
                     break;
                 }
             }
@@ -73,6 +81,7 @@ void *send_packet (void *arguments)
             {
                 VLOG(INFO, "End Of File has been reached");
                 sndpkt = make_packet(0);
+                window_packets[location] = sndpkt;
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
                 return NULL;
             }
@@ -83,11 +92,23 @@ void *send_packet (void *arguments)
             memcpy(sndpkt->data, buffer, len);
             sndpkt->hdr.seqno = send_base;
 
+            window_packets[location] = sndpkt;                                          // add the packet to the list of packets
+
             VLOG (DEBUG, "Sending packet %d to %s\n", send_base, inet_ntoa(serveraddr.sin_addr));
 
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             {
                 error("sendto");
+            }
+            if (stopTimer == 1)                                                         // if the receiver has switched the bool it means it has received an ACK, so the timer should be restarted
+            {   
+                init_timer(RETRY, resend_packets);
+                stopTimer = 0;                                                          // timer is started, so the receiver must turn the bool again to start the timer once again
+            }
+            else if (window_size > 1) 
+            {
+                if (window[1] == -1)                                                    // if the timer is stopped because the window was empty and we just added a packet, then start the timer again
+                    start_timer();
             }
             access_window = 0;                                                          // let the receiver function access the window
         }
@@ -128,18 +149,21 @@ void *receive_ack (void *arguments)
                 if (window[i] == ack - lens[i] && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
                 {
                     send_base = window[i];                                              // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
-                    for (int j = i; j<window_size; j++) 
+                    for (int j = i+1; j<window_size; j++) 
                     {
-                        window[j-i] = window[j];                                        // move up all of the packets to let the i position be first
-                        lens[j-i] = lens[j];                                            // same thing for the lengths
+                        window[j-i-1] = window[j];                                      // move up all of the packets to let the i position be first
+                        lens[j-i-1] = lens[j];                                          // same thing for the lengths
+                        window_packets[j-i-1] = window_packets[j];                      // same thing for the list containing the pointers to the packets
 
-                        window[i - j - 1] = -1;                                         // let the i number of elements trailing in the window be free
-                        lens[i - j -1] = -1;                                            // same but for the lengths
+                        window[j] = -1;                                                 // let the i number of elements trailing in the window be free
+                        lens[j] = -1;                                                   // same but for the lengths
+                        window_packets[j] = NULL;                                       // same for the list containing the list of pointers to the packets
 
                         VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i);
                     }
                 }
             }
+            stopTimer = 1;                                                              // an ACK was received, so the timer should be restarted
             access_window = 0;
         }
         ack = -1;
@@ -151,13 +175,14 @@ void resend_packets(int sig)
 {
     if (sig == SIGALRM)
     {
-        //Resend all packets range between 
-        //sendBase and nextSeqNum
-        VLOG(INFO, "Timout happend");
-        if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, 
-                    ( const struct sockaddr *)&serveraddr, serverlen) < 0)
-        {
-            error("sendto");
+        for (int i=0;i<window_size;i++) {
+            if (window[i] == -1)
+                break;
+
+            sndpkt = window_packets[i];                                                 // fetch the packet from the list of pointers containing the packets
+            VLOG(INFO, "Timeout happend");
+            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
+                error("sendto");
         }
     }
 }
