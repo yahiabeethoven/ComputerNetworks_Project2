@@ -21,7 +21,6 @@
 int next_seqno = 0;
 int send_base = 0;
 const int window_size = 10;
-int location = 0;
 
 int sockfd, serverlen;
 struct sockaddr_in serveraddr;
@@ -31,9 +30,8 @@ tcp_packet *recvpkt;
 sigset_t sigmask;
 
 int window[window_size];                                                                // create a window with the ID of every packet being sent
-tcp_packet *window_packets[window_size];
+tcp_packet *window_packets[window_size];                                                // list to store the pointers where the packets are stored
 int access_window;                                                                      // bool to decide who is acessing the window at a time: the sender or receiver
-int lens[window_size];                                                                  // create a list of lengths 
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
 
 struct args_send_packet
@@ -101,9 +99,11 @@ void *send_packet (void *arguments)
     char buffer[DATA_SIZE];
     FILE *fp = args->file;
 
-    send_base = 0;
-    next_seqno = 0;
-    stopTimer = 1;
+    int location = -1;
+
+    send_base = 0;                                                                      // initialize the base
+    next_seqno = 0;                                                                     // initialize the next sequence number
+    stopTimer = 1;                                                                      // initialize the stop timer at 1, since we need the timer to start just once
 
     while (1) 
     {
@@ -119,7 +119,6 @@ void *send_packet (void *arguments)
                 if (window[i] == -1) 
                 {
                     window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
-                    lens[i] = len;
                     location = i;
                     break;
                 }
@@ -168,6 +167,7 @@ void *send_packet (void *arguments)
 void *receive_ack (void *arguments) 
 {
     int ack = -1;
+    int rcv_seqno = -1;
     char buffer[DATA_SIZE]; 
 
     while (1) 
@@ -181,6 +181,7 @@ void *receive_ack (void *arguments)
         printf("%d \n", get_data_size(recvpkt));
         assert(get_data_size(recvpkt) <= DATA_SIZE);
         ack = recvpkt->hdr.ackno;                                                       // assign the acknowledgment recived to the local variable containing the variable
+        rcv_seqno = ack - recvpkt->hdr.data_size;                                       // get the sequence number from the ack and the data size     
 
         if (ack != -1) 
         {
@@ -194,17 +195,15 @@ void *receive_ack (void *arguments)
             access_window = 1;
             for (int i=0; i<window_size; i++) 
             {
-                if (window[i] == ack - lens[i] && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
+                if (window[i] == rcv_seqno && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
                 {
                     send_base = window[i];                                              // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
                     for (int j = i+1; j<window_size; j++) 
                     {
                         window[j-i-1] = window[j];                                      // move up all of the packets to let the i position be first
-                        lens[j-i-1] = lens[j];                                          // same thing for the lengths
                         window_packets[j-i-1] = window_packets[j];                      // same thing for the list containing the pointers to the packets
 
                         window[j] = -1;                                                 // let the i number of elements trailing in the window be free
-                        lens[j] = -1;                                                   // same but for the lengths
                         window_packets[j] = NULL;                                       // same for the list containing the list of pointers to the packets
 
                         VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i);
@@ -215,6 +214,7 @@ void *receive_ack (void *arguments)
             access_window = 0;
         }
         ack = -1;
+        rcv_seqno = -1;
     }
     return NULL;
 }
