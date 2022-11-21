@@ -31,6 +31,7 @@ sigset_t sigmask;
 
 int window[window_size];                                                                // create a window with the ID of every packet being sent
 tcp_packet *window_packets[window_size];                                                // list to store the pointers where the packets are stored
+int lens[window_size];
 int access_window;                                                                      // bool to decide who is acessing the window at a time: the sender or receiver
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
 
@@ -111,18 +112,27 @@ void *send_packet (void *arguments)
             stop_timer();                                                               // if there are no packets waiting to be ACKed, then stop the timer
 
         if (window[window_size - 1] == -1 && access_window == 0) {                      // if the last element in the window is -1 it means that the window is not full, so send a new package
+            
             access_window = 1;                                                          // because the access window bool is true, it means that the sender function can access and change the window, so turn to false so the receiver can not access the window at the same time
             len = fread(buffer, 1, DATA_SIZE, fp);
-
 
             for (int i=0; i<window_size; i++) {                                         // get the position of the window in which the next paacket ID will be located
                 if (window[i] == -1) 
                 {
                     window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
+                    lens[i] = len;
+                    VLOG (DEBUG, "Sending packet %d to %s\n", window[i], inet_ntoa(serveraddr.sin_addr));
                     location = i;
                     break;
                 }
             }
+
+            // printf("[");
+            // for (int i = 0; i<window_size; i++) 
+            // {
+            //     printf("%d, ", window[i]);
+            // }
+            // printf("]\n");
 
             if ( len <= 0)
             {
@@ -134,14 +144,14 @@ void *send_packet (void *arguments)
             }
             
             send_base = window[0];                                                      // the send base will always be the first element in the window
-            next_seqno = send_base + len;                                               // the next sequence number is increased by the size of the package sent
+            next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
             sndpkt = make_packet(len);
             memcpy(sndpkt->data, buffer, len);
             sndpkt->hdr.seqno = send_base;
 
             window_packets[location] = sndpkt;                                          // add the packet to the list of packets
-
-            VLOG (DEBUG, "Sending packet %d to %s\n", send_base, inet_ntoa(serveraddr.sin_addr));
+            
+            // VLOG (DEBUG, "Sending packet %d to %s\n", send_base, inet_ntoa(serveraddr.sin_addr));
 
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             {
@@ -159,7 +169,6 @@ void *send_packet (void *arguments)
             }
             access_window = 0;                                                          // let the receiver function access the window
         }
-        usleep(100);
     }
     return NULL;
 }
@@ -167,7 +176,6 @@ void *send_packet (void *arguments)
 void *receive_ack (void *arguments) 
 {
     int ack = -1;
-    int rcv_seqno = -1;
     char buffer[DATA_SIZE]; 
 
     while (1) 
@@ -178,11 +186,10 @@ void *receive_ack (void *arguments)
         }
 
         recvpkt = (tcp_packet *)buffer;                                                 // create a packet with the data received by the receiver
-        printf("%d \n", get_data_size(recvpkt));
+        // printf("%d \n", get_data_size(recvpkt));
         assert(get_data_size(recvpkt) <= DATA_SIZE);
         ack = recvpkt->hdr.ackno;                                                       // assign the acknowledgment recived to the local variable containing the variable
-        rcv_seqno = ack - recvpkt->hdr.data_size;                                       // get the sequence number from the ack and the data size     
-
+        // printf("Received ACK: %d, received size: %d\n", ack, recvpkt->hdr.data_size);
         if (ack != -1) 
         {
             while (access_window == 1)                                                  // function to wait for the sender function to free the window array (so the functions to not access it at the same time)
@@ -195,26 +202,29 @@ void *receive_ack (void *arguments)
             access_window = 1;
             for (int i=0; i<window_size; i++) 
             {
-                if (window[i] == rcv_seqno && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
+                if (window[i] == ack - lens[i] && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
                 {
                     send_base = window[i];                                              // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
                     for (int j = i+1; j<window_size; j++) 
                     {
                         window[j-i-1] = window[j];                                      // move up all of the packets to let the i position be first
+                        lens[j-i-1] = lens[j];
                         window_packets[j-i-1] = window_packets[j];                      // same thing for the list containing the pointers to the packets
 
                         window[j] = -1;                                                 // let the i number of elements trailing in the window be free
+                        lens[j] = -1;
                         window_packets[j] = NULL;                                       // same for the list containing the list of pointers to the packets
 
-                        VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i);
                     }
+                    // VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i+1);
+                    break;
                 }
             }
             stopTimer = 1;                                                              // an ACK was received, so the timer should be restarted
             access_window = 0;
         }
         ack = -1;
-        rcv_seqno = -1;
+        usleep(100);
     }
     return NULL;
 }
@@ -243,7 +253,6 @@ int main (int argc, char **argv)
     if (sockfd < 0) 
         error("ERROR opening socket");
 
-
     /* initialize server server details */
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serverlen = sizeof(serveraddr);
@@ -268,17 +277,22 @@ int main (int argc, char **argv)
     struct args_send_packet arguments_send;                                             // create a structure with the data to send to the function when the thread is created
     struct args_rec_ack arguments_receive;
 
-    int window[window_size];                                                            // create a window with the ID of every packet being sent
     for (int i=0; i<window_size; i++)                                                   // set every element in the window to -1 to show that it is empty
+    { 
         window[i] = -1;
+        lens[i] = -1;
+    }
     access_window = 0;                                                                  // only let one of the functions access the window at a time to avoid problems
     arguments_send.file = fp;
 
-    if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_send) != 0)    // create thread to send the package
+    if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_send) != 0){    // create thread to send the package
         printf("Error creating the thread to send the packets\n");
-
-    if (pthread_create(&threads[1], NULL, &receive_ack, (void *) &arguments_receive) != 0)  // create thread to receive ACKs
+    }
+    if (pthread_create(&threads[1], NULL, &receive_ack, (void *) &arguments_receive) != 0) {  // create thread to receive ACKs
         printf("Error creating the thread to receive ACKs\n");
+    }
+    
+    while(1){}
 
     return 0;
 
