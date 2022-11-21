@@ -127,14 +127,23 @@ void *send_packet (void *arguments)
                 }
             }
 
-            // printf("[");
-            // for (int i = 0; i<window_size; i++) 
-            // {
-            //     printf("%d, ", window[i]);
-            // }
-            // printf("]\n");
+            if (len < DATA_SIZE) 
+            {
+                printf("[");
+                for (int i = 0; i<window_size; i++) 
+                {
+                    printf("%d, ", window[i]);
+                }
+                printf("]\n");
+                printf("[");
+                for (int i = 0; i<window_size; i++) 
+                {
+                    printf("%d, ", lens[i]);
+                }
+                printf("]\n");
+            }
 
-            if ( len <= 0)
+            if (len <= 0)
             {
                 VLOG(INFO, "End Of File has been reached");
                 sndpkt = make_packet(0);
@@ -297,6 +306,3 @@ int main (int argc, char **argv)
     return 0;
 
 }
-
-
-
