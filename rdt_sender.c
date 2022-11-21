@@ -17,10 +17,11 @@
 
 #define STDIN_FD    0
 #define RETRY  120 //millisecond
+#define window_size 10
 
 int next_seqno = 0;
 int send_base = 0;
-const int window_size = 10;
+// const int window_size = 10;
 
 int sockfd, serverlen;
 struct sockaddr_in serveraddr;
