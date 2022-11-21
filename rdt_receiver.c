@@ -94,14 +94,26 @@ int main(int argc, char **argv) {
         if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)
             error("ERROR in recvfrom");
         recvpkt = (tcp_packet *) buffer;
-        assert(get_data_size(recvpkt) <= DATA_SIZE);
+        // assert(get_data_size(recvpkt) <= DATA_SIZE);
 
+        // ==================================
 
-        if (current_packet != recvpkt->hdr.seqno)                                               // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
+        assert(get_data_size(recvpkt) <= 1801);        
+
+        // ==================================
+
+        if (current_packet != recvpkt->hdr.seqno)                                              // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
+        {
+            if (recvpkt->hdr.seqno == 0) 
+            {
+                printf("End-of-file has been reached!\n");
+                return 0;
+            }
+            printf("Received out-of-order packet, needed %d and got %d\n", current_packet, recvpkt->hdr.seqno);
             continue;
+        }
         else
             current_packet += recvpkt->hdr.data_size;                                           // if it is the packet expected, then send acknowledgement
-
         if (recvpkt->hdr.data_size == 0) {
             //VLOG(INFO, "End Of File has been reached");
             fclose(fp);

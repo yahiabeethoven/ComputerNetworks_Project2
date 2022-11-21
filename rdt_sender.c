@@ -35,6 +35,7 @@ tcp_packet *window_packets[window_size];                                        
 int lens[window_size];
 int access_window;                                                                      // bool to decide who is acessing the window at a time: the sender or receiver
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
+int end_loop = 0;
 
 struct args_send_packet
 {
@@ -122,27 +123,26 @@ void *send_packet (void *arguments)
                 {
                     window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
                     lens[i] = len;
-                    VLOG (DEBUG, "Sending packet %d to %s\n", window[i], inet_ntoa(serveraddr.sin_addr));
+                    VLOG (DEBUG, "Sending packet %d to %s", window[i], inet_ntoa(serveraddr.sin_addr));
                     location = i;
                     break;
                 }
             }
 
-            if (len < DATA_SIZE) 
+            printf("Window = [");
+            for (int i = 0; i<window_size-1; i++) 
             {
-                printf("[");
-                for (int i = 0; i<window_size; i++) 
-                {
-                    printf("%d, ", window[i]);
-                }
-                printf("]\n");
-                printf("[");
-                for (int i = 0; i<window_size; i++) 
-                {
-                    printf("%d, ", lens[i]);
-                }
-                printf("]\n");
+                printf("%d, ", window[i]);
             }
+            printf("%d",window[window_size-1]);
+            printf("]\n");
+            printf("Lenghts = [");
+            for (int i = 0; i<window_size-1; i++) 
+            {
+                printf("%d, ", lens[i]);
+            }
+            printf("%d",lens[window_size-1]);
+            printf("]\n");
 
             if (len <= 0)
             {
@@ -150,19 +150,18 @@ void *send_packet (void *arguments)
                 sndpkt = make_packet(0);
                 window_packets[location] = sndpkt;
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
+                end_loop = 1;
                 return NULL;
             }
             
             send_base = window[0];                                                      // the send base will always be the first element in the window
-            next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
             sndpkt = make_packet(len);
             memcpy(sndpkt->data, buffer, len);
-            sndpkt->hdr.seqno = send_base;
+            sndpkt->hdr.seqno = next_seqno;
+            next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
 
             window_packets[location] = sndpkt;                                          // add the packet to the list of packets
             
-            // VLOG (DEBUG, "Sending packet %d to %s\n", send_base, inet_ntoa(serveraddr.sin_addr));
-
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             {
                 error("sendto");
@@ -179,7 +178,9 @@ void *send_packet (void *arguments)
             }
             access_window = 0;                                                          // let the receiver function access the window
         }
+        usleep(100);
     }
+    end_loop = 1;
     return NULL;
 }
 
@@ -226,7 +227,7 @@ void *receive_ack (void *arguments)
                         window_packets[j] = NULL;                                       // same for the list containing the list of pointers to the packets
 
                     }
-                    // VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i+1);
+                    VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i+1);
                     break;
                 }
             }
@@ -302,7 +303,7 @@ int main (int argc, char **argv)
         printf("Error creating the thread to receive ACKs\n");
     }
     
-    while(1){}
+    while(end_loop == 0){}
 
     return 0;
 
