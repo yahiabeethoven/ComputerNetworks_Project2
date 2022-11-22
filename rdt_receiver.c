@@ -12,7 +12,6 @@
 #include"common.h"
 #include"packet.h"
 
-
 /*
  * You are required to change the implementation to support
  * window size greater than one.
@@ -110,6 +109,7 @@ int main(int argc, char **argv) {
                 return 0;
             }
             printf("Received out-of-order packet, needed %d and got %d\n", current_packet, recvpkt->hdr.seqno);
+            printf("Packet %d discarded!\n", recvpkt->hdr.seqno);
             continue;
         }
         else

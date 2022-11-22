@@ -49,6 +49,7 @@ struct args_rec_ack {
 
 void resend_packets(int sig)
 {
+    printf("Resend packets\n");
     if (sig == SIGALRM)
     {
         for (int i=0;i<window_size;i++) {
@@ -106,13 +107,13 @@ void *send_packet (void *arguments)
 
     send_base = 0;                                                                      // initialize the base
     next_seqno = 0;                                                                     // initialize the next sequence number
-    stopTimer = 1;                                                                      // initialize the stop timer at 1, since we need the timer to start just once
+
+    init_timer(RETRY, resend_packets);
+
+    int var = 0;
 
     while (1) 
     {
-        if (window[0] == -1)
-            stop_timer();                                                               // if there are no packets waiting to be ACKed, then stop the timer
-
         if (window[window_size - 1] == -1 && access_window == 0) {                      // if the last element in the window is -1 it means that the window is not full, so send a new package
             
             access_window = 1;                                                          // because the access window bool is true, it means that the sender function can access and change the window, so turn to false so the receiver can not access the window at the same time
@@ -157,24 +158,29 @@ void *send_packet (void *arguments)
             send_base = window[0];                                                      // the send base will always be the first element in the window
             sndpkt = make_packet(len);
             memcpy(sndpkt->data, buffer, len);
+
             sndpkt->hdr.seqno = next_seqno;
             next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
 
             window_packets[location] = sndpkt;                                          // add the packet to the list of packets
-            
+
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             {
                 error("sendto");
             }
-            if (stopTimer == 1)                                                         // if the receiver has switched the bool it means it has received an ACK, so the timer should be restarted
+
+            if (next_seqno - len == 0)                                                  // start the timer if the sent packet is the first
             {   
-                init_timer(RETRY, resend_packets);
-                stopTimer = 0;                                                          // timer is started, so the receiver must turn the bool again to start the timer once again
+                start_timer();
+                printf("Time initialized\n");
             }
             else if (window_size > 1) 
             {
                 if (window[1] == -1)                                                    // if the timer is stopped because the window was empty and we just added a packet, then start the timer again
+                {
+                    printf("Starttime\n");
                     start_timer();
+                }
             }
             access_window = 0;                                                          // let the receiver function access the window
         }
@@ -228,10 +234,19 @@ void *receive_ack (void *arguments)
 
                     }
                     VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i+1);
+
+                    printf("Timer initialized because a successful ACK was received\n");
+                    //init_timer(RETRY, resend_packets);
+                    start_timer();
+
+                    if (window[0] == -1)
+                    {
+                        printf("Timer stopped because the window is empty\ns");
+                        stop_timer(); 
+                    }
                     break;
                 }
             }
-            stopTimer = 1;                                                              // an ACK was received, so the timer should be restarted
             access_window = 0;
         }
         ack = -1;
