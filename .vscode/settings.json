@@ -2,5 +2,12 @@
     "files.associations": {
         "iostream": "cpp",
         "ostream": "cpp"
-    }
+    },
+    "makefile.launchConfigurations": [
+        {
+            "cwd": "/Users/YahiaBeethoven/Documents/GitHub/obj",
+            "binaryPath": "/Users/YahiaBeethoven/Documents/GitHub/obj/rdt_sender",
+            "binaryArgs": []
+        }
+    ]
 }
