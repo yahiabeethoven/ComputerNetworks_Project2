@@ -51,6 +51,23 @@ void resend_packets(int sig)
 {
     VLOG(INFO, "Timeout happend");
     printf("Resend packets\n");
+    // ================================================
+    // PRINTING (CAN BE TAKEN OUT)
+    // printf("Window = [");
+    // for (int i = 0; i<window_size-1; i++) 
+    // {
+    //     printf("%d, ", window[i]);
+    // }
+    // printf("%d",window[window_size-1]);
+    // printf("]\n");
+    // printf("Lenghts = [");
+    // for (int i = 0; i<window_size-1; i++) 
+    // {
+    //     printf("%d, ", lens[i]);
+    // }
+    // printf("%d",lens[window_size-1]);
+    // printf("]\n");
+    // ================================================
     if (sig == SIGALRM)
     {
         for (int i=0;i<window_size;i++) {
@@ -150,11 +167,11 @@ void *send_packet (void *arguments)
 
             if (len <= 0)                                                               // if we reach EOF
             {
+                access_window = 0;
+                while (window[0] != -1) {}
                 sndpkt = make_packet(0);
-                window_packets[location] = sndpkt;                                      // add the packet to the window of packets
-                // while (window[0] != -1) {}
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
-                VLOG(INFO, "End Of File has been reached");
+                VLOG(INFO, "End-of-file has been reached");
                 end_loop = 1;                                                           // let the program end when it reaches EOF
                 return NULL;
             }
@@ -167,7 +184,8 @@ void *send_packet (void *arguments)
             next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
 
             window_packets[location] = sndpkt;                                          // add the packet to the list of packets
-            // if (next_seqno - len != 2213120)
+            // 2673216 2213120
+            // if (next_seqno - len != 2673216)
             // {
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             {
@@ -212,6 +230,7 @@ void *receive_ack (void *arguments)
         // printf("%d \n", get_data_size(recvpkt));
         assert(get_data_size(recvpkt) <= DATA_SIZE);
         ack = recvpkt->hdr.ackno;                                                       // assign the acknowledgment recived to the local variable containing the variable
+        
         // printf("Received ACK: %d, received size: %d\n", ack, recvpkt->hdr.data_size);
         if (ack != -1) 
         {
@@ -243,11 +262,11 @@ void *receive_ack (void *arguments)
 
                     printf("Timer initialized because a successful ACK was received\n");
                     //init_timer(RETRY, resend_packets);
-                    start_timer();
+                    // start_timer();
 
                     if (window[0] == -1)
                     {
-                        printf("Timer stopped because the window is empty\ns");
+                        printf("Timer stopped because the window is empty\n");
                         stop_timer(); 
                     }
                     break;
