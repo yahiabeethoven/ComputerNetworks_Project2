@@ -49,7 +49,6 @@ struct args_rec_ack {
 
 void resend_packets(int sig)
 {
-    VLOG(INFO, "Timeout happend");
     printf("Resend packets\n");
     if (sig == SIGALRM)
     {
@@ -58,6 +57,7 @@ void resend_packets(int sig)
                 break;
 
             sndpkt = window_packets[i];                                                 // fetch the packet from the list of pointers containing the packets
+            VLOG(INFO, "Timeout happend");
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
                 error("sendto");
         }
@@ -103,12 +103,12 @@ void *send_packet (void *arguments)
     char buffer[DATA_SIZE];
     FILE *fp = args->file;
 
-    int location = -1;                                                                  // sets the position for the first "free" spot in the window
+    int location = -1;
 
     send_base = 0;                                                                      // initialize the base
     next_seqno = 0;                                                                     // initialize the next sequence number
 
-    init_timer(RETRY, resend_packets);                                                  // initialize the timer
+    init_timer(RETRY, resend_packets);
 
     int var = 0;
 
@@ -117,21 +117,19 @@ void *send_packet (void *arguments)
         if (window[window_size - 1] == -1 && access_window == 0) {                      // if the last element in the window is -1 it means that the window is not full, so send a new package
             
             access_window = 1;                                                          // because the access window bool is true, it means that the sender function can access and change the window, so turn to false so the receiver can not access the window at the same time
-            len = fread(buffer, 1, DATA_SIZE, fp);                                      // read a number of DATA_SIZE bytes from the file
+            len = fread(buffer, 1, DATA_SIZE, fp);
 
             for (int i=0; i<window_size; i++) {                                         // get the position of the window in which the next paacket ID will be located
-                if (window[i] == -1 && len != 0) 
+                if (window[i] == -1) 
                 {
                     window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
-                    lens[i] = len;                                                      // same thing to the length of the packet
-                    VLOG (DEBUG, "Sending packet %d with length %d to %s", window[i], len ,inet_ntoa(serveraddr.sin_addr));
-                    location = i;                                                       // get a location for the packet in the list to then add the packet to the window_packet
+                    lens[i] = len;
+                    VLOG (DEBUG, "Sending packet %d to %s", window[i], inet_ntoa(serveraddr.sin_addr));
+                    location = i;
                     break;
                 }
             }
 
-            // ================================================
-            // PRINTING (CAN BE TAKEN OUT)
             printf("Window = [");
             for (int i = 0; i<window_size-1; i++) 
             {
@@ -146,16 +144,14 @@ void *send_packet (void *arguments)
             }
             printf("%d",lens[window_size-1]);
             printf("]\n");
-            // ================================================
 
-            if (len <= 0)                                                               // if we reach EOF
+            if (len <= 0)
             {
-                sndpkt = make_packet(0);
-                window_packets[location] = sndpkt;                                      // add the packet to the window of packets
-                // while (window[0] != -1) {}
-                sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
                 VLOG(INFO, "End Of File has been reached");
-                end_loop = 1;                                                           // let the program end when it reaches EOF
+                sndpkt = make_packet(0);
+                window_packets[location] = sndpkt;
+                sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
+                end_loop = 1;
                 return NULL;
             }
             
@@ -167,13 +163,11 @@ void *send_packet (void *arguments)
             next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
 
             window_packets[location] = sndpkt;                                          // add the packet to the list of packets
-            // if (next_seqno - len != 2213120)
-            // {
+
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             {
                 error("sendto");
             }
-            // }
 
             if (next_seqno - len == 0)                                                  // start the timer if the sent packet is the first
             {   
@@ -184,7 +178,7 @@ void *send_packet (void *arguments)
             {
                 if (window[1] == -1)                                                    // if the timer is stopped because the window was empty and we just added a packet, then start the timer again
                 {
-                    printf("Start time\n");
+                    printf("Starttime\n");
                     start_timer();
                 }
             }

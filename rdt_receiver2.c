@@ -133,7 +133,6 @@ int main(int argc, char **argv) {
         if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
             error("ERROR in sendto");
         }
-
     }
 
     return 0;
