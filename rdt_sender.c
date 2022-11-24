@@ -171,6 +171,7 @@ void *send_packet (void *arguments)
 
             if (len <= 0)                                                               // if we reach EOF
             {
+                printf("length is 0\n");
                 access_window = 0;
                 while (window[0] != -1) {}
                 sndpkt = make_packet(0);
