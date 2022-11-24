@@ -149,20 +149,20 @@ void *send_packet (void *arguments)
 
             // ================================================
             // PRINTING (CAN BE TAKEN OUT)
-            printf("Window = [");
-            for (int i = 0; i<window_size-1; i++) 
-            {
-                printf("%d, ", window[i]);
-            }
-            printf("%d",window[window_size-1]);
-            printf("]\n");
-            printf("Lenghts = [");
-            for (int i = 0; i<window_size-1; i++) 
-            {
-                printf("%d, ", lens[i]);
-            }
-            printf("%d",lens[window_size-1]);
-            printf("]\n");
+            // printf("Window = [");
+            // for (int i = 0; i<window_size-1; i++) 
+            // {
+            //     printf("%d, ", window[i]);
+            // }
+            // printf("%d",window[window_size-1]);
+            // printf("]\n");
+            // printf("Lenghts = [");
+            // for (int i = 0; i<window_size-1; i++) 
+            // {
+            //     printf("%d, ", lens[i]);
+            // }
+            // printf("%d",lens[window_size-1]);
+            // printf("]\n");
             // ================================================
 
             if (len <= 0)                                                               // if we reach EOF
@@ -178,47 +178,51 @@ void *send_packet (void *arguments)
                 }
                 // tests to see the error in mahimahi
                 //----------------------------------------------------------------
-                FILE *receiverTest = fopen("../com.c","r");
-                if (receiverTest) {
-                    printf("opened receiver\n");
-                }
-                fseek(senderTest,0,SEEK_END);
-                long int sender_size=ftell(senderTest);
-                fseek(senderTest,0,SEEK_SET);
-                printf("fseek 1 proper\n");
-                char* sender_contents; 
-                sender_contents=(char*)malloc(sender_size);
-                printf("sender contents proper\n");
-                fread(sender_contents,sender_size,1,senderTest);
+                // FILE *receiverTest = fopen("../com.c","r");
+                // if (receiverTest) {
+                //     printf("opened receiver\n");
+                // }
+                // fseek(senderTest,0,SEEK_END);
+                // long int sender_size=ftell(senderTest);
+                // printf("receiver size proper\n");
+                // fseek(senderTest,0,SEEK_SET);
+                // printf("fseek 1 proper\n");
+                // char* sender_contents; 
+                // sender_contents=(char*)malloc(sender_size);
+                // printf("sender contents proper\n");
+                // fread(sender_contents,sender_size,1,senderTest);
 
-                fseek(receiverTest,0,SEEK_END);
-                long int receiver_size=ftell(receiverTest);
-                fseek(receiverTest,0,SEEK_SET);
-                printf("fseek 2 proper\n");
-                char* receiver_contents; 
-                receiver_contents=(char*)malloc(receiver_size);
-                fread(receiver_contents,receiver_size,1,receiverTest);
+                // fseek(receiverTest,0,SEEK_END);
+                // long int receiver_size=ftell(receiverTest);
+                // printf("receiver size proper\n");
+                // fseek(receiverTest,0,SEEK_SET);
+                // printf("fseek 2 proper\n");
+                // char* receiver_contents; 
+                // receiver_contents=(char*)malloc(receiver_size);
+                // fread(receiver_contents,receiver_size,1,receiverTest);
 
-                int matchCounter = 0; 
-                int wrongCounter = 0;
-
-                if (sender_size == receiver_size) {
-                    for (int i = 0; i < sender_size; i++) {
-                        if (sender_contents[i] == receiver_contents[i]) {
-                            matchCounter++;
-                            printf("match: %d\n",matchCounter);
-                        }
-                        else {
-                            wrongCounter++;
-                            printf("wrong: %d\n",wrongCounter);
-                        }
-                    }  
-                }
-                else {
-                    printf("sizes mismatch\n");
-                }
-                free(sender_contents);
-                free(receiver_contents);
+                // int matchCounter = 0; 
+                // int wrongCounter = 0;
+                // for (int i = 0; i < receiver_size; i++) {
+                //         if (sender_contents[i] == receiver_contents[i]) {
+                //             matchCounter++;
+                //             printf("match: %d\n",matchCounter);
+                //         }
+                //         else {
+                //             wrongCounter++;
+                //             printf("wrong: %d\n",wrongCounter);
+                //         }
+                //     } 
+                // if (sender_size == receiver_size) {
+                     
+                // }
+                // else {
+                //     printf("sizes mismatch\n");
+                // }
+                // free(sender_contents);
+                // printf("free sender memory\n");
+                // free(receiver_contents);
+                // printf("free receiver memory\n");
                 //---------------------------------------------------------------- 
                 end_loop = 1; 
                                                                      // let the program end when it reaches EOF
@@ -245,13 +249,13 @@ void *send_packet (void *arguments)
             if (next_seqno - len == 0)                                                  // start the timer if the sent packet is the first
             {   
                 start_timer();
-                printf("Time initialized\n");
+                // printf("Time initialized\n");
             }
             else if (window_size > 1) 
             {
                 if (window[1] == -1)                                                    // if the timer is stopped because the window was empty and we just added a packet, then start the timer again
                 {
-                    printf("Start time\n");
+                    // printf("Start time\n");
                     start_timer();
                 }
             }
