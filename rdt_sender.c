@@ -217,6 +217,8 @@ void *send_packet (void *arguments)
                 else {
                     printf("sizes mismatch\n");
                 }
+                free(sender_contents);
+                free(receiver_contents);
                 //---------------------------------------------------------------- 
                 end_loop = 1; 
                                                                      // let the program end when it reaches EOF
