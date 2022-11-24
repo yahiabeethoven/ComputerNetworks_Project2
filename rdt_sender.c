@@ -172,7 +172,54 @@ void *send_packet (void *arguments)
                 sndpkt = make_packet(0);
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
                 VLOG(INFO, "End-of-file has been reached");
-                end_loop = 1;                                                           // let the program end when it reaches EOF
+                FILE *senderTest = fopen("../ComputerNetworks_Project2/highwayGold","r");
+                if (senderTest){
+                    printf("opened sender\n");
+                }
+                // tests to see the error in mahimahi
+                //----------------------------------------------------------------
+                FILE *receiverTest = fopen("../com.c","r");
+                if (receiverTest) {
+                    printf("opened receiver\n");
+                }
+                fseek(senderTest,0,SEEK_END);
+                long int sender_size=ftell(senderTest);
+                fseek(senderTest,0,SEEK_SET);
+                printf("fseek 1 proper\n");
+                char* sender_contents; 
+                sender_contents=(char*)malloc(sender_size);
+                printf("sender contents proper\n");
+                fread(sender_contents,sender_size,1,senderTest);
+
+                fseek(receiverTest,0,SEEK_END);
+                long int receiver_size=ftell(receiverTest);
+                fseek(receiverTest,0,SEEK_SET);
+                printf("fseek 2 proper\n");
+                char* receiver_contents; 
+                receiver_contents=(char*)malloc(receiver_size);
+                fread(receiver_contents,receiver_size,1,receiverTest);
+
+                int matchCounter = 0; 
+                int wrongCounter = 0;
+
+                if (sender_size == receiver_size) {
+                    for (int i = 0; i < sender_size; i++) {
+                        if (sender_contents[i] == receiver_contents[i]) {
+                            matchCounter++;
+                            printf("match: %d\n",matchCounter);
+                        }
+                        else {
+                            wrongCounter++;
+                            printf("wrong: %d\n",wrongCounter);
+                        }
+                    }  
+                }
+                else {
+                    printf("sizes mismatch\n");
+                }
+                //---------------------------------------------------------------- 
+                end_loop = 1; 
+                                                                     // let the program end when it reaches EOF
                 return NULL;
             }
             
