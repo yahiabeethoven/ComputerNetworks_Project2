@@ -37,6 +37,9 @@ int access_window;                                                              
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
 int end_loop = 0;
 
+int packetCounter = 0;
+int ackCounter = 0;
+
 struct args_send_packet
 {
     FILE *file;
@@ -137,6 +140,7 @@ void *send_packet (void *arguments)
             len = fread(buffer, 1, DATA_SIZE, fp);                                      // read a number of DATA_SIZE bytes from the file
 
             for (int i=0; i<window_size; i++) {                                         // get the position of the window in which the next paacket ID will be located
+                
                 if (window[i] == -1 && len != 0) 
                 {
                     window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
@@ -170,6 +174,7 @@ void *send_packet (void *arguments)
                 access_window = 0;
                 while (window[0] != -1) {}
                 sndpkt = make_packet(0);
+
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
                 VLOG(INFO, "End-of-file has been reached");
                 // cellularGold
@@ -210,16 +215,16 @@ void *send_packet (void *arguments)
                 int wrongCounter = 0;
                 
                 if (sender_size == receiver_size) {
-                    for (int i = 0; i < sender_size; i++) {
-                        if (sender_contents[i] == receiver_contents[i]) {
-                            matchCounter++;
-                            printf("match: %d\n",matchCounter);
-                        }
-                        else {
-                            wrongCounter++;
-                            printf("wrong: %d\n",wrongCounter);
-                        }
-                    }      
+                    // for (int i = 0; i < sender_size; i++) {
+                    //     if (sender_contents[i] == receiver_contents[i]) {
+                    //         matchCounter++;
+                    //         printf("match: %d\n",matchCounter);
+                    //     }
+                    //     else {
+                    //         wrongCounter++;
+                    //         printf("wrong: %d\n",wrongCounter);
+                    //     }
+                    // }      
                 }
                 else {
                     printf("sizes mismatch\n");
@@ -245,13 +250,13 @@ void *send_packet (void *arguments)
 
             window_packets[location] = sndpkt;                                          // add the packet to the list of packets
             // 2673216 2213120
-            // if (next_seqno - len != 2673216)
-            // {
+            if (next_seqno - len != 2673216 && next_seqno - len != 2213120 && next_seqno - len != 2971696 && next_seqno - len != 3313856)
+            {
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             {
                 error("sendto");
             }
-            // }
+            }
 
             if (next_seqno - len == 0)                                                  // start the timer if the sent packet is the first
             {   
@@ -399,11 +404,23 @@ int main (int argc, char **argv)
     if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_send) != 0){    // create thread to send the package
         printf("Error creating the thread to send the packets\n");
     }
+    else{
+        packetCounter++;
+    }
     if (pthread_create(&threads[1], NULL, &receive_ack, (void *) &arguments_receive) != 0) {  // create thread to receive ACKs
         printf("Error creating the thread to receive ACKs\n");
     }
+    else {
+        ackCounter++;
+    }
     
     while(end_loop == 0){}
+    pthread_join(threads[0],NULL);
+    
+    // for (int i = 0; i < 2; i++) {
+    //     pthread_join(threads[i],NULL);  
+    //     printf("thread joined: i = %d\n",i);  
+    // }
 
     return 0;
 
