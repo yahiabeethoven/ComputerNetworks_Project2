@@ -244,8 +244,7 @@ void *send_packet (void *arguments)
                 // free(receiver_contents);
                 // printf("free receiver memory\n");
                 //---------------------------------------------------------------- 
-                end_loop = 1; 
-                                                                     // let the program end when it reaches EOF
+                end_loop = 1;                                                           // let the program end when it reaches EOF
                 return NULL;
             }
             
@@ -295,6 +294,9 @@ void *receive_ack (void *arguments)
 
     while (1) 
     {
+        if (end_loop == 1)
+            break;
+
         if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)     // receive packet from the reeiver containing the ACk
         {
             error("recvfrom");
@@ -346,7 +348,7 @@ void *receive_ack (void *arguments)
 
                     if (window[0] == -1)
                     {
-                        printf("Timer stopped because the window is empty\n");
+                        // printf("Timer stopped because the window is empty\n");
                         stop_timer(); 
                     }
                     break;
@@ -443,8 +445,9 @@ int main (int argc, char **argv)
     }
     
     while(end_loop == 0){}
-    // pthread_join(threads[0],NULL);
-    // pthread_join(threads[1],NULL);
+    printf("\n");
+    pthread_join(threads[0],NULL);
+    pthread_join(threads[1],NULL);
     pthread_mutex_destroy(&lock);
     printf("thread joined and mutex destroyed\n");
     
