@@ -57,21 +57,21 @@ struct args_rec_ack {
 void resend_packets(int sig)
 {
     VLOG(INFO, "Timeout happend");
-    VLOG(INFO,"Resend packets");
+    printf("Resend packets\n");
     
     if (sig == SIGALRM)
     {
         for (int i=0;i<window_size;i++) {
-            // printf("entered for loop of resend packages \n");
+            printf("entered for loop of resend packages \n");
             // ================================================
             // PRINTING (CAN BE TAKEN OUT)
-            // printf("Window = [");
-            // for (int i = 0; i<window_size-1; i++) 
-            // {
-            //     printf("%d, ", window[i]);
-            // }
-            // printf("%d",window[window_size-1]);
-            // printf("]\n\n");
+            printf("Window = [");
+            for (int i = 0; i<window_size-1; i++) 
+            {
+                printf("%d, ", window[i]);
+            }
+            printf("%d",window[window_size-1]);
+            printf("]\n\n");
             // printf("Lenghts = [");
             // for (int i = 0; i<window_size-1; i++) 
             // {
@@ -82,7 +82,7 @@ void resend_packets(int sig)
             // ================================================
             if (window[i] == -1)
                 break;
-            
+
             sndpkt = window_packets[i];                                                 // fetch the packet from the list of pointers containing the packets
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
                 error("sendto");
@@ -151,7 +151,7 @@ void *send_packet (void *arguments)
                 {
                     window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
                     lens[i] = len;                                                      // same thing to the length of the packet
-                    //VLOG (DEBUG, "Sending packet %d with length %d to %s", window[i], len ,inet_ntoa(serveraddr.sin_addr));
+                    VLOG (DEBUG, "Sending packet %d with length %d to %s", window[i], len ,inet_ntoa(serveraddr.sin_addr));
                     location = i;                                                       // get a location for the packet in the list to then add the packet to the window_packet
                     break;
                 }
@@ -177,21 +177,13 @@ void *send_packet (void *arguments)
 
             if (len <= 0)                                                               // if we reach EOF
             {
-                //printf("length is 0\n");
+                printf("length is 0\n");
                 pthread_mutex_unlock(&lock);
                 // access_window = 0;
                 while (window[0] != -1) {}
                 sndpkt = make_packet(0);
 
-                start_timer();
-                window[0] = 0;
-                lens[0] = 0;
-                window_packets[0] = sndpkt;
-                send_base = window[0];
-                // sndpkt->hdr.ackno = 0;
-
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
-                // VLOG(INFO,"packet attributes: header ack is %d, header data size is %d",sndpkt->hdr.ackno, sndpkt->hdr.data_size);
                 VLOG(INFO, "End-of-file has been reached");
                 // cellularGold
                 // FILE *senderTest = fopen("../ComputerNetworks_Project2/cellularGold","r");
@@ -252,8 +244,6 @@ void *send_packet (void *arguments)
                 // free(receiver_contents);
                 // printf("free receiver memory\n");
                 //---------------------------------------------------------------- 
-                while(window[0] != -1) {}
-                stop_timer();
                 end_loop = 1;                                                           // let the program end when it reaches EOF
                 return NULL;
             }
@@ -304,8 +294,8 @@ void *receive_ack (void *arguments)
 
     while (1) 
     {
-        printf("%d\n", end_loop);
-        
+        if (end_loop == 1)
+            break;
 
         if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)     // receive packet from the reeiver containing the ACk
         {
@@ -350,9 +340,9 @@ void *receive_ack (void *arguments)
                         window_packets[j] = NULL;                                       // same for the list containing the list of pointers to the packets
 
                     }
-                    //VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i+1);
+                    VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i+1);
 
-                    VLOG(INFO, "Timer initialized because a successful ACK was received");
+                    printf("Timer initialized because a successful ACK was received\n");
                     //init_timer(RETRY, resend_packets);
                     // start_timer();
 
@@ -367,10 +357,6 @@ void *receive_ack (void *arguments)
             pthread_mutex_unlock(&lock);
             // access_window = 0;
         }
-        if (end_loop == 1)
-        {
-            break;
-        }  
         ack = -1;
         usleep(100);
     }
@@ -459,20 +445,11 @@ int main (int argc, char **argv)
     }
     
     while(end_loop == 0){}
-    //printf("\n");
+    printf("\n");
     pthread_join(threads[0],NULL);
-    VLOG(INFO,"After the first");
-    // pthread_join(threads[1],NULL);
-    pthread_detach(threads[1]);
-    // if (threads[1]) {
-    //     pthread_join(threads[1],NULL);
-    // }
-    VLOG(INFO,"After the second");
+    pthread_join(threads[1],NULL);
     pthread_mutex_destroy(&lock);
-    VLOG(INFO, "Thread joined and mutex destroyed");
-    
-    
-    
+    printf("thread joined and mutex destroyed\n");
     
     // for (int i = 0; i < 2; i++) {
     //     pthread_join(threads[i],NULL);  
