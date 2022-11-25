@@ -186,43 +186,43 @@ void *send_packet (void *arguments)
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
                 VLOG(INFO, "End-of-file has been reached");
                 // cellularGold
-                // FILE *senderTest = fopen("../ComputerNetworks_Project2/cellularGold","r");
+                FILE *senderTest = fopen("../ComputerNetworks_Project2/cellularGold","r");
                 // rapidGold
                 // FILE *senderTest = fopen("../ComputerNetworks_Project2/rapidGold","r");
                 // highwayGold
                 // FILE *senderTest = fopen("../ComputerNetworks_Project2/highwayGold","r");
-                // if (senderTest){
-                //     printf("opened sender\n");
-                // }
+                if (senderTest){
+                    printf("opened sender\n");
+                }
                 // tests to see the error in mahimahi
                 //----------------------------------------------------------------
-                // FILE *receiverTest = fopen("../com.c","r");
-                // if (receiverTest) {
-                //     printf("opened receiver\n");
-                // }
-                // fseek(senderTest,0,SEEK_END);
-                // long int sender_size=ftell(senderTest);
-                // printf("receiver size proper\n");
-                // fseek(senderTest,0,SEEK_SET);
-                // printf("fseek 1 proper\n");
-                // char* sender_contents; 
-                // sender_contents=(char*)malloc(sender_size);
+                FILE *receiverTest = fopen("../com.c","r");
+                if (receiverTest) {
+                    printf("opened receiver\n");
+                }
+                fseek(senderTest,0,SEEK_END);
+                long int sender_size=ftell(senderTest);
+                printf("receiver size proper\n");
+                fseek(senderTest,0,SEEK_SET);
+                printf("fseek 1 proper\n");
+                char* sender_contents; 
+                sender_contents=(char*)malloc(sender_size);
                 
-                // fread(sender_contents,sender_size,1,senderTest);
+                fread(sender_contents,sender_size,1,senderTest);
 
-                // fseek(receiverTest,0,SEEK_END);
-                // long int receiver_size=ftell(receiverTest);
+                fseek(receiverTest,0,SEEK_END);
+                long int receiver_size=ftell(receiverTest);
                 
-                // fseek(receiverTest,0,SEEK_SET);
-                // printf("fseek 2 proper\n");
-                // char* receiver_contents; 
-                // receiver_contents=(char*)malloc(receiver_size);
-                // fread(receiver_contents,receiver_size,1,receiverTest);
+                fseek(receiverTest,0,SEEK_SET);
+                printf("fseek 2 proper\n");
+                char* receiver_contents; 
+                receiver_contents=(char*)malloc(receiver_size);
+                fread(receiver_contents,receiver_size,1,receiverTest);
 
-                // int matchCounter = 0; 
-                // int wrongCounter = 0;
+                int matchCounter = 0; 
+                int wrongCounter = 0;
                 
-                // if (sender_size == receiver_size) {
+                if (sender_size == receiver_size) {
                     // for (int i = 0; i < sender_size; i++) {
                     //     if (sender_contents[i] == receiver_contents[i]) {
                     //         matchCounter++;
@@ -233,16 +233,16 @@ void *send_packet (void *arguments)
                     //         printf("wrong: %d\n",wrongCounter);
                     //     }
                     // }      
-                // }
-                // else {
-                //     printf("sizes mismatch\n");
-                // }
-                // printf("sender contents proper, %ld\n",sender_size);
-                // printf("receiver size proper, %ld\n",receiver_size);
-                // free(sender_contents);
-                // printf("free sender memory\n");
-                // free(receiver_contents);
-                // printf("free receiver memory\n");
+                }
+                else {
+                    printf("sizes mismatch\n");
+                }
+                printf("sender contents proper, %ld\n",sender_size);
+                printf("receiver size proper, %ld\n",receiver_size);
+                free(sender_contents);
+                printf("free sender memory\n");
+                free(receiver_contents);
+                printf("free receiver memory\n");
                 //---------------------------------------------------------------- 
                 end_loop = 1; 
                                                                      // let the program end when it reaches EOF
@@ -282,7 +282,7 @@ void *send_packet (void *arguments)
             pthread_mutex_unlock(&lock);
             // access_window = 0;                                                          // let the receiver function access the window
         }
-        usleep(100);
+        // usleep(100);
     }
     end_loop = 1;
     return NULL;

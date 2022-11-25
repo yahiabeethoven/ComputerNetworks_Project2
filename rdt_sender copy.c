@@ -140,9 +140,9 @@ void *send_packet (void *arguments)
 
     while (1) 
     {
-        if (window[window_size - 1] == -1) {                      // if the last element in the window is -1 it means that the window is not full, so send a new package
-            pthread_mutex_lock(&lock);
-            // access_window = 1;                                                          // because the access window bool is true, it means that the sender function can access and change the window, so turn to false so the receiver can not access the window at the same time
+        if (window[window_size - 1] == -1 && access_window == 0) {                      // if the last element in the window is -1 it means that the window is not full, so send a new package
+            
+            access_window = 1;                                                          // because the access window bool is true, it means that the sender function can access and change the window, so turn to false so the receiver can not access the window at the same time
             len = fread(buffer, 1, DATA_SIZE, fp);                                      // read a number of DATA_SIZE bytes from the file
 
             for (int i=0; i<window_size; i++) {                                         // get the position of the window in which the next paacket ID will be located
@@ -178,51 +178,50 @@ void *send_packet (void *arguments)
             if (len <= 0)                                                               // if we reach EOF
             {
                 printf("length is 0\n");
-                pthread_mutex_unlock(&lock);
-                // access_window = 0;
+                access_window = 0;
                 while (window[0] != -1) {}
                 sndpkt = make_packet(0);
 
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
                 VLOG(INFO, "End-of-file has been reached");
                 // cellularGold
-                // FILE *senderTest = fopen("../ComputerNetworks_Project2/cellularGold","r");
+                FILE *senderTest = fopen("../ComputerNetworks_Project2/cellularGold","r");
                 // rapidGold
                 // FILE *senderTest = fopen("../ComputerNetworks_Project2/rapidGold","r");
                 // highwayGold
                 // FILE *senderTest = fopen("../ComputerNetworks_Project2/highwayGold","r");
-                // if (senderTest){
-                //     printf("opened sender\n");
-                // }
+                if (senderTest){
+                    printf("opened sender\n");
+                }
                 // tests to see the error in mahimahi
                 //----------------------------------------------------------------
-                // FILE *receiverTest = fopen("../com.c","r");
-                // if (receiverTest) {
-                //     printf("opened receiver\n");
-                // }
-                // fseek(senderTest,0,SEEK_END);
-                // long int sender_size=ftell(senderTest);
-                // printf("receiver size proper\n");
-                // fseek(senderTest,0,SEEK_SET);
-                // printf("fseek 1 proper\n");
-                // char* sender_contents; 
-                // sender_contents=(char*)malloc(sender_size);
+                FILE *receiverTest = fopen("../com.c","r");
+                if (receiverTest) {
+                    printf("opened receiver\n");
+                }
+                fseek(senderTest,0,SEEK_END);
+                long int sender_size=ftell(senderTest);
+                printf("receiver size proper\n");
+                fseek(senderTest,0,SEEK_SET);
+                printf("fseek 1 proper\n");
+                char* sender_contents; 
+                sender_contents=(char*)malloc(sender_size);
                 
-                // fread(sender_contents,sender_size,1,senderTest);
+                fread(sender_contents,sender_size,1,senderTest);
 
-                // fseek(receiverTest,0,SEEK_END);
-                // long int receiver_size=ftell(receiverTest);
+                fseek(receiverTest,0,SEEK_END);
+                long int receiver_size=ftell(receiverTest);
                 
-                // fseek(receiverTest,0,SEEK_SET);
-                // printf("fseek 2 proper\n");
-                // char* receiver_contents; 
-                // receiver_contents=(char*)malloc(receiver_size);
-                // fread(receiver_contents,receiver_size,1,receiverTest);
+                fseek(receiverTest,0,SEEK_SET);
+                printf("fseek 2 proper\n");
+                char* receiver_contents; 
+                receiver_contents=(char*)malloc(receiver_size);
+                fread(receiver_contents,receiver_size,1,receiverTest);
 
-                // int matchCounter = 0; 
-                // int wrongCounter = 0;
+                int matchCounter = 0; 
+                int wrongCounter = 0;
                 
-                // if (sender_size == receiver_size) {
+                if (sender_size == receiver_size) {
                     // for (int i = 0; i < sender_size; i++) {
                     //     if (sender_contents[i] == receiver_contents[i]) {
                     //         matchCounter++;
@@ -233,16 +232,16 @@ void *send_packet (void *arguments)
                     //         printf("wrong: %d\n",wrongCounter);
                     //     }
                     // }      
-                // }
-                // else {
-                //     printf("sizes mismatch\n");
-                // }
-                // printf("sender contents proper, %ld\n",sender_size);
-                // printf("receiver size proper, %ld\n",receiver_size);
-                // free(sender_contents);
-                // printf("free sender memory\n");
-                // free(receiver_contents);
-                // printf("free receiver memory\n");
+                }
+                else {
+                    printf("sizes mismatch\n");
+                }
+                printf("sender contents proper, %ld\n",sender_size);
+                printf("receiver size proper, %ld\n",receiver_size);
+                free(sender_contents);
+                printf("free sender memory\n");
+                free(receiver_contents);
+                printf("free receiver memory\n");
                 //---------------------------------------------------------------- 
                 end_loop = 1; 
                                                                      // let the program end when it reaches EOF
@@ -279,8 +278,7 @@ void *send_packet (void *arguments)
                     start_timer();
                 }
             }
-            pthread_mutex_unlock(&lock);
-            // access_window = 0;                                                          // let the receiver function access the window
+            access_window = 0;                                                          // let the receiver function access the window
         }
         usleep(100);
     }
@@ -308,20 +306,14 @@ void *receive_ack (void *arguments)
         // printf("Received ACK: %d, received size: %d\n", ack, recvpkt->hdr.data_size);
         if (ack != -1) 
         {
-            // while (access_window == 1)                                                  // function to wait for the sender function to free the window array (so the functions to not access it at the same time)
-            // {
-            //     if (access_window == 0)                                                 // when the access window bool turns to 0 it means it is free, so it can be changed
-            //     {
-            //         break;
-            //     }
-            // }
-            // int checkLock;
-            // do {
-            //     checkLock = pthread_mutex_trylock(&lock);
-            // }
-            // while(checkLock!=0);
-            pthread_mutex_lock(&lock);
-            // access_window = 1;
+            while (access_window == 1)                                                  // function to wait for the sender function to free the window array (so the functions to not access it at the same time)
+            {
+                if (access_window == 0)                                                 // when the access window bool turns to 0 it means it is free, so it can be changed
+                {
+                    break;
+                }
+            }
+            access_window = 1;
             for (int i=0; i<window_size; i++) 
             {
                 if (window[i] == ack - lens[i] && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
@@ -352,8 +344,7 @@ void *receive_ack (void *arguments)
                     break;
                 }
             }
-            pthread_mutex_unlock(&lock);
-            // access_window = 0;
+            access_window = 0;
         }
         ack = -1;
         usleep(100);
@@ -422,11 +413,7 @@ int main (int argc, char **argv)
         window[i] = -1;
         lens[i] = -1;
     }
-    if (pthread_mutex_init(&lock, NULL) != 0) {
-        printf("mutex init failed\n");
-        return 1;
-    }
-    // access_window = 0;                                                                  // only let one of the functions access the window at a time to avoid problems
+    access_window = 0;                                                                  // only let one of the functions access the window at a time to avoid problems
     arguments_send.file = fp;
 
     if (pthread_create(&threads[0], NULL, &send_packet, (void *) &arguments_send) != 0){    // create thread to send the package
@@ -443,10 +430,7 @@ int main (int argc, char **argv)
     }
     
     while(end_loop == 0){}
-    // pthread_join(threads[0],NULL);
-    // pthread_join(threads[1],NULL);
-    pthread_mutex_destroy(&lock);
-    printf("thread joined and mutex destroyed\n");
+    pthread_join(threads[0],NULL);
     
     // for (int i = 0; i < 2; i++) {
     //     pthread_join(threads[i],NULL);  

@@ -96,13 +96,14 @@ int main(int argc, char **argv) {
         assert(get_data_size(recvpkt) <= DATA_SIZE);  
 
         // printf("Sequence number: %d\n", recvpkt->hdr.seqno);      
-        if (recvpkt->hdr.data_size == 0) {
-            VLOG(INFO, "End Of File has been reached");
-            fclose(fp);
-            break;
-        }
+        
         if (current_packet != recvpkt->hdr.seqno)                                              // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
         {
+            if (recvpkt->hdr.data_size == 0 || recvpkt->hdr.seqno == 0) {
+                VLOG(INFO, "End Of File has been reached");
+                fclose(fp);
+                break;
+            }
             // if (recvpkt->hdr.seqno == 0) 
             // {
             //     printf("End-of-file has been reached!\n");
