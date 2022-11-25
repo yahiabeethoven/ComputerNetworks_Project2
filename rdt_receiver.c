@@ -95,22 +95,15 @@ int main(int argc, char **argv) {
         recvpkt = (tcp_packet *) buffer;
         assert(get_data_size(recvpkt) <= DATA_SIZE);  
 
-        printf("%d\n", recvpkt->hdr.seqno);
-
         // printf("Sequence number: %d\n", recvpkt->hdr.seqno);      
         if (recvpkt->hdr.data_size == 0) {
             VLOG(INFO, "End Of File has been reached");
             fclose(fp);
-            sndpkt = make_packet(0);
-            sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
-            sndpkt->hdr.ctr_flags = ACK;
-            if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
-                error("ERROR in sendto");
-            }
             break;
         }
         if (current_packet != recvpkt->hdr.seqno)                                              // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
         {
+<<<<<<< HEAD
             if (recvpkt->hdr.seqno == 0)  
             {
                 printf("End-of-file has been reached!\n");
@@ -122,8 +115,16 @@ int main(int argc, char **argv) {
                 }
                 return 0;
             }
+            printf("Out-of-order packet: %d discarded.", recvpkt->hdr.seqno, );
+=======
+            // if (recvpkt->hdr.seqno == 0) 
+            // {
+            //     printf("End-of-file has been reached!\n");
+            //     return 0;
+            // }
             printf("Received out-of-order packet, needed %d and got %d\n", current_packet, recvpkt->hdr.seqno);
             printf("Packet %d discarded!\n", recvpkt->hdr.seqno);
+>>>>>>> parent of 14b4b8b (WORKS)
             // if (recvpkt->hdr.seqno < current_packet)
             // {
             //     printf("Sending ACK that was out-of-order\n");
