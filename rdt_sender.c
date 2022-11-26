@@ -157,36 +157,18 @@ void *send_packet (void *arguments)
                 }
             }
 
-            // ================================================
-            // PRINTING (CAN BE TAKEN OUT)
-            // printf("Window = [");
-            // for (int i = 0; i<window_size-1; i++) 
-            // {
-            //     printf("%d, ", window[i]);
-            // }
-            // printf("%d",window[window_size-1]);
-            // printf("]\n");
-            // printf("Lenghts = [");
-            // for (int i = 0; i<window_size-1; i++) 
-            // {
-            //     printf("%d, ", lens[i]);
-            // }
-            // printf("%d",lens[window_size-1]);
-            // printf("]\n");
-            // ================================================
-
             if (len <= 0)                                                               // if we reach EOF
             {
                 pthread_mutex_unlock(&lock);
                 
-                while (window[0] != -1) {}
-                sndpkt = make_packet(0);
+                while (window[0] != -1) {}                                              // waiting for the window to be empty before sending the last, terminating packet
+                sndpkt = make_packet(0);                                                // make a packet of length zero to indicate end of file
 
-                start_timer();
-                window[0] = 0;
-                lens[0] = 0;
-                window_packets[0] = sndpkt;
-                send_base = window[0];
+                start_timer();                                                          // start timer in case the packet does not reach the receiver
+                window[0] = 0;                                                          // add the element to the window, to be able to resend in case of timeout
+                lens[0] = 0;                                                            // same thing for the length
+                window_packets[0] = sndpkt;                                             // same thing for the packet
+                send_base = window[0];                                                  // change the send base to the first element
 
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
 
@@ -275,15 +257,11 @@ void *receive_ack (void *arguments)
                         window_packets[j] = NULL;                                       // same for the list containing the list of pointers to the packets
 
                     }
-                    //VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i+1);
 
                     VLOG(DEBUG, "> Received successful ACK for packet %d", current);
-                    //init_timer(RETRY, resend_packets);
-                    // start_timer();
 
                     if (window[0] == -1)
                     {
-                        // printf("Timer stopped because the window is empty\n");
                         stop_timer(); 
                     }
                     break;
