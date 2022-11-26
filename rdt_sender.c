@@ -34,7 +34,7 @@ sigset_t sigmask;
 int window[window_size];                                                                // create a window with the ID of every packet being sent
 tcp_packet *window_packets[window_size];                                                // list to store the pointers where the packets are stored
 int lens[window_size];
-int access_window;                                                                      // bool to decide who is acessing the window at a time: the sender or receiver
+// int access_window;                                                                      // bool to decide who is acessing the window at a time: the sender or receiver
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
 int end_loop = 0;
 
@@ -80,7 +80,7 @@ void resend_packets(int sig)
             // printf("%d",lens[window_size-1]);
             // printf("]\n");
             // ================================================
-            if (window[i] == -1)
+            if (window[i] == -1 || window_packets[i] == NULL)
                 break;
             
             sndpkt = window_packets[i];                                                 // fetch the packet from the list of pointers containing the packets
@@ -177,9 +177,8 @@ void *send_packet (void *arguments)
 
             if (len <= 0)                                                               // if we reach EOF
             {
-                //printf("length is 0\n");
                 pthread_mutex_unlock(&lock);
-                // access_window = 0;
+                
                 while (window[0] != -1) {}
                 sndpkt = make_packet(0);
 
@@ -188,71 +187,11 @@ void *send_packet (void *arguments)
                 lens[0] = 0;
                 window_packets[0] = sndpkt;
                 send_base = window[0];
-                // sndpkt->hdr.ackno = 0;
 
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
-                // VLOG(INFO,"packet attributes: header ack is %d, header data size is %d",sndpkt->hdr.ackno, sndpkt->hdr.data_size);
-                VLOG(INFO, "End-of-file has been reached");
-                // cellularGold
-                // FILE *senderTest = fopen("../ComputerNetworks_Project2/cellularGold","r");
-                // rapidGold
-                // FILE *senderTest = fopen("../ComputerNetworks_Project2/rapidGold","r");
-                // highwayGold
-                // FILE *senderTest = fopen("../ComputerNetworks_Project2/highwayGold","r");
-                // if (senderTest){
-                //     printf("opened sender\n");
-                // }
-                // tests to see the error in mahimahi
-                //----------------------------------------------------------------
-                // FILE *receiverTest = fopen("../com.c","r");
-                // if (receiverTest) {
-                //     printf("opened receiver\n");
-                // }
-                // fseek(senderTest,0,SEEK_END);
-                // long int sender_size=ftell(senderTest);
-                // printf("receiver size proper\n");
-                // fseek(senderTest,0,SEEK_SET);
-                // printf("fseek 1 proper\n");
-                // char* sender_contents; 
-                // sender_contents=(char*)malloc(sender_size);
-                
-                // fread(sender_contents,sender_size,1,senderTest);
 
-                // fseek(receiverTest,0,SEEK_END);
-                // long int receiver_size=ftell(receiverTest);
-                
-                // fseek(receiverTest,0,SEEK_SET);
-                // printf("fseek 2 proper\n");
-                // char* receiver_contents; 
-                // receiver_contents=(char*)malloc(receiver_size);
-                // fread(receiver_contents,receiver_size,1,receiverTest);
-
-                // int matchCounter = 0; 
-                // int wrongCounter = 0;
-                
-                // if (sender_size == receiver_size) {
-                    // for (int i = 0; i < sender_size; i++) {
-                    //     if (sender_contents[i] == receiver_contents[i]) {
-                    //         matchCounter++;
-                    //         printf("match: %d\n",matchCounter);
-                    //     }
-                    //     else {
-                    //         wrongCounter++;
-                    //         printf("wrong: %d\n",wrongCounter);
-                    //     }
-                    // }      
-                // }
-                // else {
-                //     printf("sizes mismatch\n");
-                // }
-                // printf("sender contents proper, %ld\n",sender_size);
-                // printf("receiver size proper, %ld\n",receiver_size);
-                // free(sender_contents);
-                // printf("free sender memory\n");
-                // free(receiver_contents);
-                // printf("free receiver memory\n");
-                //---------------------------------------------------------------- 
                 while(window[0] != -1) {}
+                VLOG(INFO, "End-of-file has been reached");
                 stop_timer();
                 end_loop = 1;                                                           // let the program end when it reaches EOF
                 return NULL;
@@ -303,10 +242,7 @@ void *receive_ack (void *arguments)
     char buffer[DATA_SIZE]; 
 
     while (1) 
-    {
-        printf("%d\n", end_loop);
-        
-
+    {        
         if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)     // receive packet from the reeiver containing the ACk
         {
             error("recvfrom");
@@ -320,20 +256,7 @@ void *receive_ack (void *arguments)
         // printf("Received ACK: %d, received size: %d\n", ack, recvpkt->hdr.data_size);
         if (ack != -1) 
         {
-            // while (access_window == 1)                                                  // function to wait for the sender function to free the window array (so the functions to not access it at the same time)
-            // {
-            //     if (access_window == 0)                                                 // when the access window bool turns to 0 it means it is free, so it can be changed
-            //     {
-            //         break;
-            //     }
-            // }
-            // int checkLock;
-            // do {
-            //     checkLock = pthread_mutex_trylock(&lock);
-            // }
-            // while(checkLock!=0);
             pthread_mutex_lock(&lock);
-            // access_window = 1;
             for (int i=0; i<window_size; i++) 
             {
                 if (window[i] == ack - lens[i] && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
@@ -464,9 +387,6 @@ int main (int argc, char **argv)
     VLOG(INFO,"After the first");
     // pthread_join(threads[1],NULL);
     pthread_detach(threads[1]);
-    // if (threads[1]) {
-    //     pthread_join(threads[1],NULL);
-    // }
     VLOG(INFO,"After the second");
     pthread_mutex_destroy(&lock);
     VLOG(INFO, "Thread joined and mutex destroyed");

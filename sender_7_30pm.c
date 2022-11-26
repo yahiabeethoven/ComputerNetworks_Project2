@@ -62,16 +62,16 @@ void resend_packets(int sig)
     if (sig == SIGALRM)
     {
         for (int i=0;i<window_size;i++) {
-            printf("entered for loop of resend packages \n");
+            // printf("entered for loop of resend packages \n");
             // ================================================
             // PRINTING (CAN BE TAKEN OUT)
-            printf("Window = [");
-            for (int i = 0; i<window_size-1; i++) 
-            {
-                printf("%d, ", window[i]);
-            }
-            printf("%d",window[window_size-1]);
-            printf("]\n\n");
+            // printf("Window = [");
+            // for (int i = 0; i<window_size-1; i++) 
+            // {
+            //     printf("%d, ", window[i]);
+            // }
+            // printf("%d",window[window_size-1]);
+            // printf("]\n\n");
             // printf("Lenghts = [");
             // for (int i = 0; i<window_size-1; i++) 
             // {
@@ -177,7 +177,7 @@ void *send_packet (void *arguments)
 
             if (len <= 0)                                                               // if we reach EOF
             {
-                printf("length is 0\n");
+                // printf("length is 0\n");
                 pthread_mutex_unlock(&lock);
                 // access_window = 0;
                 while (window[0] != -1) {}
