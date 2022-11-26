@@ -56,8 +56,8 @@ struct args_rec_ack {
 
 void resend_packets(int sig)
 {
-    VLOG(INFO, "Timeout happend");
-    VLOG(INFO,"Resend packets");
+    VLOG(INFO, "> Timeout happened: Resend packets");
+    //VLOG(INFO,"Resend packets");
     
     if (sig == SIGALRM)
     {
@@ -151,7 +151,7 @@ void *send_packet (void *arguments)
                 {
                     window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
                     lens[i] = len;                                                      // same thing to the length of the packet
-                    //VLOG (DEBUG, "Sending packet %d with length %d to %s", window[i], len ,inet_ntoa(serveraddr.sin_addr));
+                    VLOG (DEBUG, "> Send packet %d to %s", next_seqno,inet_ntoa(serveraddr.sin_addr));
                     location = i;                                                       // get a location for the packet in the list to then add the packet to the window_packet
                     break;
                 }
@@ -191,7 +191,8 @@ void *send_packet (void *arguments)
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);
 
                 while(window[0] != -1) {}
-                VLOG(INFO, "End-of-file has been reached");
+                usleep(100);
+                VLOG(INFO, "> End-of-file has been reached!");
                 stop_timer();
                 end_loop = 1;                                                           // let the program end when it reaches EOF
                 return NULL;
@@ -259,6 +260,7 @@ void *receive_ack (void *arguments)
             pthread_mutex_lock(&lock);
             for (int i=0; i<window_size; i++) 
             {
+                int current = ack - lens[i];
                 if (window[i] == ack - lens[i] && ack >= send_base)                     // find the position of the window that contains the packet for the ACK received
                 {
                     send_base = window[i];                                              // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
@@ -275,7 +277,7 @@ void *receive_ack (void *arguments)
                     }
                     //VLOG(DEBUG, "Received ACK %d, which corresponds to the %d elemnent in the window\n", ack, i+1);
 
-                    VLOG(INFO, "Timer initialized because a successful ACK was received");
+                    VLOG(DEBUG, "> Received successful ACK for packet %d", current);
                     //init_timer(RETRY, resend_packets);
                     // start_timer();
 
@@ -384,12 +386,10 @@ int main (int argc, char **argv)
     while(end_loop == 0){}
     //printf("\n");
     pthread_join(threads[0],NULL);
-    VLOG(INFO,"After the first");
     // pthread_join(threads[1],NULL);
     pthread_detach(threads[1]);
-    VLOG(INFO,"After the second");
     pthread_mutex_destroy(&lock);
-    VLOG(INFO, "Thread joined and mutex destroyed");
+    VLOG(INFO, "> Terminating program...");
     
     
     
