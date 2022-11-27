@@ -12,6 +12,8 @@
 #include"common.h"
 #include"packet.h"
 
+//HELLo
+
 /*
  * You are required to change the implementation to support
  * window size greater than one.
@@ -41,7 +43,8 @@ int main(int argc, char **argv) {
     }
     portno = atoi(argv[1]);
 
-    fp  = fopen(argv[2], "w");
+    // open the file we receive inside in write mode
+    fp  = fopen(argv[2], "w+");
     if (fp == NULL) {
         error(argv[2]);
     }
@@ -90,50 +93,79 @@ int main(int argc, char **argv) {
          * recvfrom: receive a UDP datagram from a client
          */
         //VLOG(DEBUG, "waiting from server \n");
-        if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)
+        if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0) {
             error("ERROR in recvfrom");
+        }
+
+        // store the value of buffer into the packet object received    
         recvpkt = (tcp_packet *) buffer;
-        // assert(get_data_size(recvpkt) <= DATA_SIZE);
+        assert(get_data_size(recvpkt) <= DATA_SIZE); 
 
-        // ==================================
+        // if packet received is different from the one expected
+        if (current_packet != recvpkt->hdr.seqno)                                              
+        {   
+            // if the data size of that packet is 0, then it is the terminating packet 0
+            if (recvpkt->hdr.data_size == 0) {
+                VLOG(INFO, "> End Of File has been reached!");
+                // close the file we are writing inside
+                fclose(fp);
 
-        assert(get_data_size(recvpkt) <= 1801);        
+                // create a packet to send the final acknowledgement to sender that the terminating packet has arrived
+                sndpkt = make_packet(0);
+                sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
+                sndpkt->hdr.ctr_flags = ACK;
 
-        // ==================================
-
-        if (current_packet != recvpkt->hdr.seqno)                                              // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
-        {
-            if (recvpkt->hdr.seqno == 0) 
-            {
-                printf("End-of-file has been reached!\n");
-                return 0;
+                // send that acknowledgement packet to sender and catch errors
+                if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
+                    error("ERROR in sendto");
+                }
+                // break from the loop, program has ended
+                break;
             }
-            printf("Received out-of-order packet, needed %d and got %d\n", current_packet, recvpkt->hdr.seqno);
-            printf("Packet %d discarded!\n", recvpkt->hdr.seqno);
+            
+            // if the received packet has a seq number less than the expected
+            // this only occurs if the sender resends a packet because a timeout has occured on their end
+            if (recvpkt->hdr.seqno < current_packet) 
+            {   
+                // send an ACK for that packet, even if it was received before
+                sndpkt = make_packet(0);
+                sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
+                sndpkt->hdr.ctr_flags = ACK;
+                if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
+                    error("ERROR in sendto");
+                }
+            }
+            // if the received packet is not a resent one nor a 0 terinating packet, simply ignore it
             continue;
         }
         else
             current_packet += recvpkt->hdr.data_size;                                           // if it is the packet expected, then send acknowledgement
-        if (recvpkt->hdr.data_size == 0) {
-            //VLOG(INFO, "End Of File has been reached");
-            fclose(fp);
-            break;
-        }
+        
         /* 
          * sendto: ACK back to the client 
          */
         gettimeofday(&tp, NULL);
-        VLOG(DEBUG, "%lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
+        VLOG(DEBUG, "> %lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
 
+        // calculate data size
         fseek(fp, recvpkt->hdr.seqno, SEEK_SET);
         fwrite(recvpkt->data, 1, recvpkt->hdr.data_size, fp);
+        // empty the buffer that is associated with the specified output stream, if possible
+        fflush(fp);
+
+        // create appropriate packet that contains ACK of the one just received to get back to sender 
         sndpkt = make_packet(0);
         sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
         sndpkt->hdr.ctr_flags = ACK;
+        
+        // send ACK to sender, handle errors
         if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
             error("ERROR in sendto");
         }
+
     }
+    // program has ended, connection has ended with sender
+    VLOG(INFO, "> Terminating program...");
 
     return 0;
 }
