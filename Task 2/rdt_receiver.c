@@ -91,15 +91,10 @@ int main(int argc, char **argv) {
         /*
          * recvfrom: receive a UDP datagram from a client
          */
-        //VLOG(DEBUG, "waiting from server \n");
         if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)
             error("ERROR in recvfrom");
         recvpkt = (tcp_packet *) buffer;
         assert(get_data_size(recvpkt) <= DATA_SIZE);  
-
-        // printf("%d\n", recvpkt->hdr.seqno);
-
-        // printf("Sequence number: %d\n", recvpkt->hdr.seqno);      
 
         if (current_packet != recvpkt->hdr.seqno)                                              // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
         {
