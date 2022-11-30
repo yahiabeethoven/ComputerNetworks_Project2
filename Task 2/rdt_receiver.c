@@ -12,32 +12,25 @@
 #include"common.h"
 #include"packet.h"
 
-//HELLo
+#define size_of_buffer 64
 
-/*
- * You are required to change the implementation to support
- * window size greater than one.
- * In the current implementation the window size is one, hence we have
- * only one send and receive packet
- */
 tcp_packet *recvpkt;
 tcp_packet *sndpkt;
 
+tcp_packet *pkt_buffer[size_of_buffer];                                               // make a buffer to store the sequence numbers of the out-of-order packets
+
 int main(int argc, char **argv) {
-    int sockfd; /* socket */
-    int portno; /* port to listen on */
-    int clientlen; /* byte size of client's address */
-    struct sockaddr_in serveraddr; /* server's addr */
-    struct sockaddr_in clientaddr; /* client addr */
-    int optval; /* flag value for setsockopt */
+    int sockfd;                                                                         // socket
+    int portno;                                                                         // port to listen on
+    int clientlen;                                                                      // byte size of client's address
+    struct sockaddr_in serveraddr;                                                      // server's addr
+    struct sockaddr_in clientaddr;                                                      // client addr
+    int optval;                                                                         // flag value for setsockopt
     FILE *fp;
     char buffer[MSS_SIZE];
     struct timeval tp;
 
-    /* 
-     * check command line arguments 
-     */
-    if (argc != 3) {
+    if (argc != 3) {                                                                    // check command line arguments 
         fprintf(stderr, "usage: %s <port> FILE_RECVD\n", argv[0]);
         exit(1);
     }
@@ -48,57 +41,43 @@ int main(int argc, char **argv) {
         error(argv[2]);
     }
 
-    /* 
-     * socket: create the parent socket 
-     */
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);                                            // socket: create the parent socket 
     if (sockfd < 0) 
         error("ERROR opening socket");
 
-    /* setsockopt: Handy debugging trick that lets 
-     * us rerun the server immediately after we kill it; 
-     * otherwise we have to wait about 20 secs. 
-     * Eliminates "ERROR on binding: Address already in use" error. 
-     */
     optval = 1;
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, 
             (const void *)&optval , sizeof(int));
 
-    /*
-     * build the server's Internet address
-     */
-    bzero((char *) &serveraddr, sizeof(serveraddr));
+    bzero((char *) &serveraddr, sizeof(serveraddr));                                    // build the server's Internet address
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
     serveraddr.sin_port = htons((unsigned short)portno);
-
-    /* 
-     * bind: associate the parent socket with a port 
-     */
-    if (bind(sockfd, (struct sockaddr *) &serveraddr, 
-                sizeof(serveraddr)) < 0) 
+    
+    if (bind(sockfd, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) < 0)          // bind: associate the parent socket with a port 
         error("ERROR on binding");
 
-    /* 
-     * main loop: wait for a datagram, then echo it
-     */
     VLOG(DEBUG, "epoch time, bytes received, sequence number");
 
     clientlen = sizeof(clientaddr);
     int current_packet = 0;
 
+    for (int i=0; i<size_of_buffer; i++)                                                // initialize an empty buffer for out-of-order packets
+    {
+        pkt_buffer[i] = NULL;
+    }
+
+    int out_order_pkt = 0;
+
     while (1) {
-        /*
-         * recvfrom: receive a UDP datagram from a client
-         */
-        if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)
+        if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)        // recvfrom: receive a UDP datagram from a client
             error("ERROR in recvfrom");
         recvpkt = (tcp_packet *) buffer;
         assert(get_data_size(recvpkt) <= DATA_SIZE);  
 
-        if (current_packet != recvpkt->hdr.seqno)                                              // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
+        if (current_packet != recvpkt->hdr.seqno)                                       // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
         {
-            if (recvpkt->hdr.data_size == 0) {
+            if (recvpkt->hdr.data_size == 0) {                                          // if the data size is 0 it means that the packet is the last packet sent to represent EOF
                 VLOG(INFO, "> End Of File has been reached!");
                 fclose(fp);
                 sndpkt = make_packet(0);
@@ -109,9 +88,8 @@ int main(int argc, char **argv) {
                 }
                 break;
             }
-            // printf("Received out-of-order packet, needed %d and got %d\n", current_packet, recvpkt->hdr.seqno);
-            //printf("Packet %d discarded!\n", recvpkt->hdr.seqno);
-            if (recvpkt->hdr.seqno < current_packet) 
+
+            if (recvpkt->hdr.seqno < current_packet)                                    // if the received packet has a sequence number less than the one received, sent an ACK since the previous ack probably was not received properly
             {
                 sndpkt = make_packet(0);
                 sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
@@ -120,14 +98,29 @@ int main(int argc, char **argv) {
                     error("ERROR in sendto");
                 }
             }
+
+            if (recvpkt->hdr.seqno > current_packet)                                    // the packet received is out-of-order, so buffer
+            {
+                for (int i=0; i<size_of_buffer; i++) 
+                {
+                    if (pkt_buffer[i] == NULL)                                          // find the first item that is empty
+                    {
+                        pkt_buffer[i] = recvpkt;                                        // add the ack number to the out-of-order packet buffer
+                        break;
+                    }
+                }
+                sndpkt = make_packet(0);                                                // sending duplicate ACK, which has the same value as the previous ACK sent
+                sndpkt->hdr.ackno = out_order_pkt;                                      // let the ack number be the out-of-order pkt sequence number
+                sndpkt->hdr.ctr_flags = ACK;
+                if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
+                    error("ERROR in sendto");
+                }
+            }
             continue;
         }
-        else
-            current_packet += recvpkt->hdr.data_size;                                           // if it is the packet expected, then send acknowledgement
-        
-        /* 
-         * sendto: ACK back to the client 
-         */
+        else                                                                            // in task 2, this else means that the packet received is the first packet in the window, so there is a possibility that the out-of-order packets buffered are directly after
+            current_packet += recvpkt->hdr.data_size;                                   // if it is the packet expected, then send acknowledgement
+
         gettimeofday(&tp, NULL);
         VLOG(DEBUG, "> %lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
 
@@ -136,11 +129,51 @@ int main(int argc, char **argv) {
         fflush(fp);
         sndpkt = make_packet(0);
         sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
+        out_order_pkt = recvpkt->hdr.seqno + recvpkt->hdr.data_size;                    // set the ack for the out-of-order packet to be sent in case the next packet received is not the one expected
         sndpkt->hdr.ctr_flags = ACK;
         if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
             error("ERROR in sendto");
         }
+        for (int i=0; i<size_of_buffer; i++)                                            // go through the list of buffered packets to see if any of them is the one expected after the one received
+        {
+            if (current_packet == pkt_buffer[i]->hdr.seqno)
+            {
+                current_packet += pkt_buffer[i]->hdr.data_size;                         // increase the current packet value by the size to see if the next one is also in 
+                gettimeofday(&tp, NULL);
+                VLOG(DEBUG, "> %lu, %d, %d (recovered from buffer)", tp.tv_sec, pkt_buffer[i]->hdr.data_size, pkt_buffer[i]->hdr.seqno);
+                fseek(fp, pkt_buffer[i]->hdr.seqno, SEEK_SET);
+                fwrite(pkt_buffer[i]->data, 1, pkt_buffer[i]->hdr.data_size, fp);
+                fflush(fp);
+                sndpkt = make_packet(0);
+                sndpkt->hdr.ackno = pkt_buffer[i]->hdr.seqno + pkt_buffer[i]->hdr.data_size;
+                sndpkt->hdr.ctr_flags = ACK;
+                if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
+                    error("ERROR in sendto");
+                }
+                for (int j=i;j<size_of_buffer-1;j++)                                    // move all of the elements to erase the one that has just been found to be in order
+                {
+                    pkt_buffer[j] = pkt_buffer[j+1];
+                    if (pkt_buffer[j] == NULL && pkt_buffer[j+1] == NULL)
+                        break;
+                }
+                i -= 1;                                                                 // decrease i by one, since we have moved all of the elements and need to see the one holding the position where the previous one was
+                pkt_buffer[size_of_buffer-1] = NULL;                                    // make sure the last one is also changed, since the for loop does not traverse through it
+            }
 
+            else if (pkt_buffer[i]->hdr.seqno < current_packet)                         // if the packet in the buffer was a duplicate and we have moved on from that one, then take it out of the buffer 
+            {
+                for (int j=i;j<size_of_buffer-1;j++)
+                {
+                    pkt_buffer[j] = pkt_buffer[j+1];
+                    if (pkt_buffer[j] == NULL && pkt_buffer[j+1] == NULL)
+                        break;
+                }
+                pkt_buffer[size_of_buffer-1] = NULL;                                    // make sure the last one is also changed, since the for loop does not traverse through it
+                i -= 1;                                                                 // decrease i by one, since we have moved all of the elements and need to see the one holding the position where the previous one was
+            }
+            else if (pkt_buffer[i] == NULL)                                             // if the packet in order is NULL it means that there are no more packets after this one, so stop to not waste time
+                break;
+        }
     }
 
     VLOG(INFO, "> Terminating program...");
