@@ -17,15 +17,19 @@
 
 #define STDIN_FD    0
 #define RETRY  120                                                                      // milliseconds
-#define WINDOW_SIZE 10                                                                  // define window size
+#define MAX_WINDOW 256                                                                  // define window size
 #define SIZE_ACK 128
 
 // ================ 
 // VARIABLES DEFINED FOR TASK 2
 float cwnd = 1;                                                                         // create a float variable to store the cwnd. It needs to tbe a float because in congestion avoidance the cwnd is increased by 1/cwnd
-int int_cwnd = 1;                                                                       // take this variable as the float of the cwnd
 int ssthresh = 0;                                                                       // create the slow-start threshold, which will be set to 64 when the program starts
 int stage = 0;                                                                          // allows the program to know which stage of the process it's in: (0) Slow-start, (1) Congestion avoidance, (2) Fast retransmit
+int loc_buff_pkt = -1;
+                                                                            
+tcp_packet *buff_packets[MAX_WINDOW];                                                   /* These variable is created solely to be adjusted to our coding style. When the value of cwnd is decreased there may be some 
+                                                                                        packets in the sliding window with value > cwnd that are "lost" in a way, so we decided to move them to another list so the sender can fetch
+                                                                                        from this list instead of from the file, and when these list is empty it can stat fetching from the file again */
 // ================ 
 
 int next_seqno = 0;
@@ -38,9 +42,7 @@ tcp_packet *sndpkt;
 tcp_packet *recvpkt;
 sigset_t sigmask;
 
-int window[WINDOW_SIZE];                                                                // create a window with the ID of every packet being sent
-tcp_packet *window_packets[WINDOW_SIZE];                                                // list to store the pointers where the packets are stored
-int lens[WINDOW_SIZE];
+tcp_packet *window_packets[MAX_WINDOW];                                                 // list to store the pointers where the packets are stored
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
 int end_loop = 0;
 
@@ -50,7 +52,6 @@ struct args_send_packet                                                         
 {
     FILE *file;
 };
-
 
 struct args_rec_ack {};                                                                 /* simple struct to be passed as the argument in the thread created when calling the function "receive_ack"
                                                                                         it is currently empty, but we kept it in case we needed to pass more ack attributes in part 2 of the project */
@@ -62,10 +63,30 @@ void resend_packets(int sig)                                                    
     VLOG(INFO, "> Timeout happened: Resend packets");
     if (sig == SIGALRM)                                                                 // if we reach timeout
     {
+        pthread_mutex_lock(&lock);
         sndpkt = window_packets[0];                                                     /* packet object to be sent is set to current element in the window and then sent to receiver                                          
                                                                                         fetch the packet from the list of pointers containing the packets */
         if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
             error("sendto");
+        if (stage == 0)                                                                 // if a timeout occured during the slow-start phase, then let cwnd = 1 and ssthresh=MAX(cwnd/2, 2)
+        {
+            for (int i=0;i<MAX_WINDOW;i++) 
+            {
+                if (buff_packets == NULL)
+                {
+                    loc_buff_pkt = i;
+                    break;
+                }
+            }
+            for (int i=1;i<cwnd;i++) 
+            {
+                buff_packets[loc_buff_pkt++] = window_packets[i];
+                window_packets[i] = NULL;
+            }
+            cwnd = 1;
+            ssthresh = MAX(cwnd/2, 2);
+        }
+        pthread_mutex_unlock(&lock);
     }
 }
 
@@ -110,8 +131,6 @@ void *send_packet (void *arguments)                                             
     
     FILE *fp = args->file;                                                              // file to be sent to receiver
 
-    int location = -1;                                                                  // sets the position for the first "free" spot in the window
-
     send_base = 0;                                                                      // initialize the base
     next_seqno = 0;                                                                     // initialize the next sequence number
 
@@ -119,72 +138,73 @@ void *send_packet (void *arguments)                                             
 
     while (1) 
     {
-        if (window[WINDOW_SIZE - 1] == -1) {                                            /* if the last element in the window is -1 it means that the window is not full, so send a new package
+        if (window_packets[floor(cwnd) - 1] == NULL) {                                  /* if the last element in the congestion window is -1 it means that the window is not full, so send a new package
                                                                                         once this is entered, the window array will changed so the lock must be locked to prevent 
                                                                                         receiver from making any changes to array and causing inconsistent results */
             pthread_mutex_lock(&lock);
-            len = fread(buffer, 1, DATA_SIZE, fp);                                      // read a number of DATA_SIZE bytes from the file
-
-            for (int i=0; i<WINDOW_SIZE; i++) {                                         // get the position of the window in which the next paacket ID will be located
-                
-                if (window[i] == -1 && len != 0) 
+            if (buff_packets[0] == NULL)                                                // if there is any packet in the buff of packets made when the cwnd was recuced, then take the data from there instead
+                len = fread(buffer, 1, DATA_SIZE, fp);                                  // read a number of DATA_SIZE bytes from the file
+            else {
+                len = buff_packets[0]->hdr.data_size;
+                next_seqno = buff_packets[0]->hdr.seqno;
+                memcpy(buffer,buff_packets[0]->data, len);
+                for (int i=0; i<MAX_WINDOW-1; i++)                                      // move all of the items up when one is sent
                 {
-                    window[i] = next_seqno;                                             // when that position is found, set the packet ID to the next_seqno, since it will be the ID of the packet being sent
-                    lens[i] = len;                                                      // same thing to the length of the packet
-                    VLOG (DEBUG, "> Send packet %d to %s", next_seqno,inet_ntoa(serveraddr.sin_addr));
-                    location = i;                                                       // get a location for the packet in the list to then add the packet to the window_packet
-                    break;
+                    buff_packets[i] = buff_packets[i+1];
                 }
+                buff_packets[MAX_WINDOW-1] = NULL;
             }
             
             if (len <= 0)                                                               // if the length of bytes read from file is 0, it means we have reached the end of file
             {
                 pthread_mutex_unlock(&lock);                                            // we no longer need the lock, so unlock so the receiver can edit the window arrays if needed
                 
-                while (window[0] != -1) {}                                              // waiting for the window to be empty before sending the last, terminating packet
+                while (window_packets[0] != NULL) {}                                    // waiting for the window to be empty before sending the last, terminating packet
                 sndpkt = make_packet(0);                                                // make a packet of length zero to indicate end of file
 
                 start_timer();                                                          // start timer in case the packet does not reach the receiver
-                window[0] = 0;                                                          // add the element to the window, to be able to resend in case of timeout
-                lens[0] = 0;                                                            // same thing for the length
+                window_packets[0]->hdr.seqno = 0;                                       // add the element to the window, to be able to resend in case of timeout
+                window_packets[0]->hdr.data_size = 0;                                   // same thing for the length
                 window_packets[0] = sndpkt;                                             // same thing for the packet
-                send_base = window[0];                                                  // change the send base to the first element
+                send_base = window_packets[0]->hdr.seqno;                               // change the send base to the first element
 
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);  // send the terminating packet to receiver to indicate EOF
-                while(window[0] != -1) {}                                               // waiting to receive the specific ACK for the terminating packet 0 before ending the whole loop
+                while(window_packets[0] != NULL) {}                                     // waiting to receive the specific ACK for the terminating packet 0 before ending the whole loop
                 usleep(100);                                                            // wait for a moment before finally printing that the file has ended and terminating the program
                 VLOG(INFO, "> End-of-file has been reached!");
                 stop_timer();                                                           // stop the timer we just started earlier to make sure terminating packet actually reached receiver
                 end_loop = 1;                                                           // let the program end when it reaches EOF
                 return NULL;
             }
-            
-            send_base = window[0];                                                      // the send base will always be the first element in the window
+
             sndpkt = make_packet(len);                                                  // create packet with corresponding number of byte sread from file
             memcpy(sndpkt->data, buffer, len);                                          // copy data contents from buffer to packet object
-
             sndpkt->hdr.seqno = next_seqno;                                             // set the packet seq number to the next seq number as per TCP Protocol
-            next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
+            for (int i=0; i<cwnd; i++) {                                                // get the position of the window in which the next paacket ID will be located
+                if (window_packets[i] == NULL && len != 0) 
+                {
+                    window_packets[i] = sndpkt;
+                    VLOG (DEBUG, "> Send packet %d to %s", next_seqno,inet_ntoa(serveraddr.sin_addr));
+                    break;
+                }
+            }
 
-            window_packets[location] = sndpkt;                                          // add the packet to the list of packets
+            send_base = window_packets[0]->hdr.seqno;                                   // the send base will always be the first element in the window
+            next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
 
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)   // send the packet object to receiver and catch errors in sending
             {
                 error("sendto");
             }
-
             
             if (next_seqno - len == 0)                                                  // start the timer if the sent packet is the first                                             
             {   
                 start_timer();
             }
             
-            else if (WINDOW_SIZE > 1)                                                   // if the timer is stopped because the window was empty and we just added a packet, then start the timer again
+            if (window_packets[1] == NULL)                                                    
             {
-                if (window[1] == -1)                                                    
-                {
-                    start_timer();
-                }
+                start_timer();
             }
             
             pthread_mutex_unlock(&lock);                                                // after all changes to the window arrays, we should now unlock the lock to allow the receiver to make necessary changes when needed
@@ -214,54 +234,72 @@ void *receive_ack (void *arguments)                                             
         ack_temp = recvpkt->hdr.ackno;                                                  // assign the acknowledgment recived to the local variable containing the variable
     
         pthread_mutex_lock(&lock);                                                      // we need to lock because the window arrays will be amended
-        for (int i=0; i<WINDOW_SIZE; i++) 
+        
+        // ===========================
+        // NEW FOR TASK 2
+        if (stage == 0)                                                                 // if a successful ACK was received while in the slow-start stage, then increase cwnd by 1
         {
-            // ===========================
-            // NEW FOR TASK 2
-            if (stage == 0)                                                             // if a successful ACK was received while in the slow-start stage, then increase cwnd by 1
+            cwnd += 1;                                                                  // increase cwnd by 1
+            if (cwnd == ssthresh)                                                       // if the cwnd is equal to the slow start threshold, then enter congestion control
+                stage += 1;                                                             // increase the stage by 1, which means reaching congestion control
+        }
+
+        if (ack_temp == send_base)                                                      // received a duplicate ACK
+        {
+            num_duplicate += 1;                                                         // increase the counter by 1
+            if (num_duplicate == 3)                                                     // if it is a triple ACK, then a packet must be lost
             {
-                cwnd += 1;                                                              // increase cwnd by 1
-                if (cwnd == ssthresh)                                                   // if the cwnd is equal to the slow start threshold, then enter congestion control
+                stage = 2;                                                              // enter the fast retransmit stage
+            }
+        }
+
+        if (stage = 2)                                                                  // fast retransmit stage
+        {
+            stop_timer();
+            for (int i=0;i<MAX_WINDOW;i++) 
+            {
+                if (buff_packets == NULL)
                 {
-                    stage += 1;                                                         // increase the stage by 1, which means reaching congestion control
+                    loc_buff_pkt = i;
+                    break;
                 }
             }
-
-            if (ack_temp == send_base)                                                  // received a duplicate ACK
+            for (int i=0;i<cwnd;i++) 
             {
-                num_duplicate += 1;                                                     // increase the counter by 1
-                if (num_duplicate == 3)                                                 // if it is a triple ACK, then a packet must be lost
-                {
-                    stop_timer();
-                    resend_three_ack();                                                 // because a triple duplicate ACK was received then resend the first one
-                    ssthresh = cwnd/2 > 2 ? cwnd/2 : 2;                                 // let the new ssthresh be max(cwnd/2,2)
-                }
+                buff_packets[loc_buff_pkt++] = window_packets[i];
+                window_packets[i] = NULL;
             }
-            // ===========================
+            cwnd = 1;                                                                   // let the cwnd be 1 again
+            ssthresh = MAX(cwnd/2, 2);                                                  // let the new ssthresh be max(cwnd/2,2)
+            stage = 0;                                                                  // go back to slow start phase
+            num_duplicate = 0;                                                          // change the counter back to 0 after the fast retransmit phase
+        }
+        // ===========================
 
-            if (window[i] == ack_temp - lens[i] && ack_temp >= send_base)               // find the position of the window that contains the packet for the ACK received
+        for (int i=0; i<cwnd; i++) 
+        {
+            if (window_packets[i]->hdr.ackno == ack_temp - window_packets[i]->hdr.data_size && ack_temp >= send_base)    // find the position of the window that contains the packet for the ACK received
             {
-                send_base = window[i];                                                  // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
-                for (int j = i+1; j<WINDOW_SIZE; j++) 
+                send_base = window_packets[i]->hdr.seqno;                               // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
+                for (int j = i+1; j<floor(cwnd); j++) 
                 {
-                    window[j-i-1] = window[j];                                          // move up all of the packets to let the i position be first
-                    lens[j-i-1] = lens[j];
-                    window_packets[j-i-1] = window_packets[j];                          // same thing for the list containing the pointers to the packets
-
-                    window[j] = -1;                                                     // let the i number of elements trailing in the window be free
-                    lens[j] = -1;
-                    window_packets[j] = NULL;                                           // same for the list containing the list of pointers to the packets
+                    window_packets[j-i-1] = window_packets[j];                          // move up all of the packets to let the i position be first
+                    window_packets[j] = NULL;                                           // move up all of the packets to let the i position be first
 
                 }
-                VLOG(DEBUG, "> Received successful ACK for packet %d", current);        // indicate packet ACK has been successfully received
+                VLOG(DEBUG, "> Received successful ACK for packet %d", ack_temp - window_packets[i]->hdr.data_size);    // indicate packet ACK has been successfully received
 
-                if (window[0] == -1)                                                    // if the first element has been acknowledged, list is empty, so stop timer until further notice
+                if (window_packets[0] == NULL)                                          // if the first element has been acknowledged, list is empty, so stop timer until further notice
                 {
                     stop_timer(); 
                 }
-                break;                                                                  // only do the above actions once when the packet for which the ACK was received is found, then break out of outer for loop
             }
-            last_rcv_ack = ack_temp;                                                    // since an ACK was received successfully, we can let the last received ack be the ack just received, since then we can keep track of the acks to know if the next one is duplicate or not 
+            if (buff_packets[i]->hdr.ackno == ack_temp - buff_packets[i]->hdr.data_size)    // if the ACK received is for an element in the buff of packets and not the normal window, then look also inside of it
+            {
+                for (int j=i; i<MAX_WINDOW-1; i++)
+                    buff_packets[j] = buff_packets[j+1];
+                buff_packets[MAX_WINDOW-1] = NULL;
+            }
         }
         
         pthread_mutex_unlock(&lock);                                                    // no longer need to lock the window arrays after breaking outside the for loop
@@ -318,15 +356,9 @@ int main (int argc, char **argv)
     struct args_send_packet arguments_send;                                             // create a structure with the data to send to the function when the thread is created
     struct args_rec_ack arguments_receive;
 
-    for (int i=0; i<WINDOW_SIZE; i++)                                                   // set every element in the window to -1 to show that it is empty
+    for (int i=0; i<MAX_WINDOW; i++)                                                    // set every element in the window to -1 to show that it is empty
     { 
-        window[i] = -1;
-        lens[i] = -1;
-    }
-
-    for (int i=0; i<SIZE_ACK; i++)                                                      // initialize the list of acks to be NULL
-    {
-        ack_list[i] = NULL;
+        window_packets[i] = NULL;
     }
 
     if (pthread_mutex_init(&lock, NULL) != 0) {                                         // try to initialize the lock used for exclusively changing the window arrows in send_packet and receive_ack, if failed exit the program
