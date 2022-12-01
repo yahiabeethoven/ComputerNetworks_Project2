@@ -11,6 +11,7 @@
 #include <time.h>
 #include <assert.h>
 #include <pthread.h>
+#include <math.h>
 
 #include"packet.h"
 #include"common.h"
@@ -19,6 +20,7 @@
 #define RETRY  120                                                                      // milliseconds
 #define MAX_WINDOW 256                                                                  // define window size
 #define SIZE_ACK 128
+#define MAX(a,b) (((a)>(b))?(a):(b))
 
 // ================ 
 // VARIABLES DEFINED FOR TASK 2
@@ -72,7 +74,7 @@ void resend_packets(int sig)                                                    
         {
             for (int i=0;i<MAX_WINDOW;i++) 
             {
-                if (buff_packets == NULL)
+                if (buff_packets[i] == NULL)
                 {
                     loc_buff_pkt = i;
                     break;
@@ -136,9 +138,12 @@ void *send_packet (void *arguments)                                             
 
     init_timer(RETRY, resend_packets);                                                  // initialize the timer
 
+    int floor_int = -1;
+
     while (1) 
     {
-        if (window_packets[floor(cwnd) - 1] == NULL) {                                  /* if the last element in the congestion window is -1 it means that the window is not full, so send a new package
+        floor_int = floor(cwnd);
+        if (window_packets[floor_int - 1] == NULL) {                                  /* if the last element in the congestion window is -1 it means that the window is not full, so send a new package
                                                                                         once this is entered, the window array will changed so the lock must be locked to prevent 
                                                                                         receiver from making any changes to array and causing inconsistent results */
             pthread_mutex_lock(&lock);
@@ -237,6 +242,9 @@ void *receive_ack (void *arguments)                                             
         
         // ===========================
         // NEW FOR TASK 2
+        if (stage == 1)
+            cwnd += (1/cwnd);
+
         if (stage == 0)                                                                 // if a successful ACK was received while in the slow-start stage, then increase cwnd by 1
         {
             cwnd += 1;                                                                  // increase cwnd by 1
@@ -249,30 +257,26 @@ void *receive_ack (void *arguments)                                             
             num_duplicate += 1;                                                         // increase the counter by 1
             if (num_duplicate == 3)                                                     // if it is a triple ACK, then a packet must be lost
             {
-                stage = 2;                                                              // enter the fast retransmit stage
-            }
-        }
-
-        if (stage = 2)                                                                  // fast retransmit stage
-        {
-            stop_timer();
-            for (int i=0;i<MAX_WINDOW;i++) 
-            {
-                if (buff_packets == NULL)
+                // FAST RETRANSMIT PHASE                                                // enter the fast retransmit stage
+                stop_timer();
+                for (int i=0;i<MAX_WINDOW;i++) 
                 {
-                    loc_buff_pkt = i;
-                    break;
+                    if (buff_packets[i] == NULL)
+                    {
+                        loc_buff_pkt = i;
+                        break;
+                    }
                 }
+                for (int i=0;i<cwnd;i++) 
+                {
+                    buff_packets[loc_buff_pkt++] = window_packets[i];
+                    window_packets[i] = NULL;
+                }
+                cwnd = 1;                                                               // let the cwnd be 1 again
+                ssthresh = MAX(cwnd/2, 2);                                              // let the new ssthresh be max(cwnd/2,2)
+                stage = 0;                                                              // go back to slow start phase
+                num_duplicate = 0;                                                      // change the counter back to 0 after the fast retransmit phase
             }
-            for (int i=0;i<cwnd;i++) 
-            {
-                buff_packets[loc_buff_pkt++] = window_packets[i];
-                window_packets[i] = NULL;
-            }
-            cwnd = 1;                                                                   // let the cwnd be 1 again
-            ssthresh = MAX(cwnd/2, 2);                                                  // let the new ssthresh be max(cwnd/2,2)
-            stage = 0;                                                                  // go back to slow start phase
-            num_duplicate = 0;                                                          // change the counter back to 0 after the fast retransmit phase
         }
         // ===========================
 
