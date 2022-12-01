@@ -123,56 +123,74 @@ int main(int argc, char **argv) {
 
         gettimeofday(&tp, NULL);
         VLOG(DEBUG, "> %lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
-
+        // printf("10\n");
         fseek(fp, recvpkt->hdr.seqno, SEEK_SET);
+        // printf("5\n");
         fwrite(recvpkt->data, 1, recvpkt->hdr.data_size, fp);
+        // printf("6\n");
         fflush(fp);
+        // printf("7\n");
         sndpkt = make_packet(0);
+        // printf("8\n");
         sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
         out_order_pkt = recvpkt->hdr.seqno + recvpkt->hdr.data_size;                    // set the ack for the out-of-order packet to be sent in case the next packet received is not the one expected
+        // printf("9\n");
         sndpkt->hdr.ctr_flags = ACK;
         if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
             error("ERROR in sendto");
         }
+        // printf("Sent ACK!\n");
+        // printf("1\n");
         for (int i=0; i<size_of_buffer; i++)                                            // go through the list of buffered packets to see if any of them is the one expected after the one received
         {
-            if (current_packet == pkt_buffer[i]->hdr.seqno)
+            // printf("11\n");
+            if (pkt_buffer[i] != NULL)
             {
-                current_packet += pkt_buffer[i]->hdr.data_size;                         // increase the current packet value by the size to see if the next one is also in 
-                gettimeofday(&tp, NULL);
-                VLOG(DEBUG, "> %lu, %d, %d (recovered from buffer)", tp.tv_sec, pkt_buffer[i]->hdr.data_size, pkt_buffer[i]->hdr.seqno);
-                fseek(fp, pkt_buffer[i]->hdr.seqno, SEEK_SET);
-                fwrite(pkt_buffer[i]->data, 1, pkt_buffer[i]->hdr.data_size, fp);
-                fflush(fp);
-                sndpkt = make_packet(0);
-                sndpkt->hdr.ackno = pkt_buffer[i]->hdr.seqno + pkt_buffer[i]->hdr.data_size;
-                sndpkt->hdr.ctr_flags = ACK;
-                if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
-                    error("ERROR in sendto");
-                }
-                for (int j=i;j<size_of_buffer-1;j++)                                    // move all of the elements to erase the one that has just been found to be in order
+                // printf("11\n");
+                if (pkt_buffer[i]->hdr.seqno < current_packet)                         // if the packet in the buffer was a duplicate and we have moved on from that one, then take it out of the buffer 
                 {
-                    pkt_buffer[j] = pkt_buffer[j+1];
-                    if (pkt_buffer[j] == NULL && pkt_buffer[j+1] == NULL)
-                        break;
+                    // printf("12\n");
+                    for (int j=i;j<size_of_buffer-1;j++)
+                    {
+                        // printf("13\n");
+                        pkt_buffer[j] = pkt_buffer[j+1];
+                        // printf("14\n");
+                        if (pkt_buffer[j] == NULL && pkt_buffer[j+1] == NULL)
+                            break;
+                        // printf("15\n");
+                    }
+                    // printf("16\n");
+                    pkt_buffer[size_of_buffer-1] = NULL;                                    // make sure the last one is also changed, since the for loop does not traverse through it
+                    i -= 1;                                                                 // decrease i by one, since we have moved all of the elements and need to see the one holding the position where the previous one was
                 }
-                i -= 1;                                                                 // decrease i by one, since we have moved all of the elements and need to see the one holding the position where the previous one was
-                pkt_buffer[size_of_buffer-1] = NULL;                                    // make sure the last one is also changed, since the for loop does not traverse through it
-            }
-
-            else if (pkt_buffer[i]->hdr.seqno < current_packet)                         // if the packet in the buffer was a duplicate and we have moved on from that one, then take it out of the buffer 
-            {
-                for (int j=i;j<size_of_buffer-1;j++)
+                else if (current_packet == pkt_buffer[i]->hdr.seqno)
                 {
-                    pkt_buffer[j] = pkt_buffer[j+1];
-                    if (pkt_buffer[j] == NULL && pkt_buffer[j+1] == NULL)
-                        break;
+                    printf("3\n");
+                    current_packet += pkt_buffer[i]->hdr.data_size;                         // increase the current packet value by the size to see if the next one is also in 
+                    gettimeofday(&tp, NULL);
+                    VLOG(DEBUG, "> %lu, %d, %d (recovered from buffer)", tp.tv_sec, pkt_buffer[i]->hdr.data_size, pkt_buffer[i]->hdr.seqno);
+                    fseek(fp, pkt_buffer[i]->hdr.seqno, SEEK_SET);
+                    fwrite(pkt_buffer[i]->data, 1, pkt_buffer[i]->hdr.data_size, fp);
+                    fflush(fp);
+                    sndpkt = make_packet(0);
+                    sndpkt->hdr.ackno = pkt_buffer[i]->hdr.seqno + pkt_buffer[i]->hdr.data_size;
+                    sndpkt->hdr.ctr_flags = ACK;
+                    if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
+                        error("ERROR in sendto");
+                    }
+                    for (int j=i;j<size_of_buffer-1;j++)                                    // move all of the elements to erase the one that has just been found to be in order
+                    {
+                        pkt_buffer[j] = pkt_buffer[j+1];
+                        if (pkt_buffer[j] == NULL && pkt_buffer[j+1] == NULL)
+                            break;
+                    }
+                    i -= 1;                                                                 // decrease i by one, since we have moved all of the elements and need to see the one holding the position where the previous one was
+                    pkt_buffer[size_of_buffer-1] = NULL;                                    // make sure the last one is also changed, since the for loop does not traverse through it
                 }
-                pkt_buffer[size_of_buffer-1] = NULL;                                    // make sure the last one is also changed, since the for loop does not traverse through it
-                i -= 1;                                                                 // decrease i by one, since we have moved all of the elements and need to see the one holding the position where the previous one was
             }
-            else if (pkt_buffer[i] == NULL)                                             // if the packet in order is NULL it means that there are no more packets after this one, so stop to not waste time
+            else
                 break;
+            // printf("4\n");
         }
     }
 

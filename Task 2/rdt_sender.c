@@ -139,9 +139,11 @@ void *send_packet (void *arguments)                                             
     init_timer(RETRY, resend_packets);                                                  // initialize the timer
 
     int floor_int = -1;
+    int example = 0;
 
     while (1) 
     {
+        // scanf("%d", &example);
         floor_int = floor(cwnd);
         if (window_packets[floor_int - 1] == NULL) {                                  /* if the last element in the congestion window is -1 it means that the window is not full, so send a new package
                                                                                         once this is entered, the window array will changed so the lock must be locked to prevent 
@@ -163,13 +165,12 @@ void *send_packet (void *arguments)                                             
             if (len <= 0)                                                               // if the length of bytes read from file is 0, it means we have reached the end of file
             {
                 pthread_mutex_unlock(&lock);                                            // we no longer need the lock, so unlock so the receiver can edit the window arrays if needed
-                
                 while (window_packets[0] != NULL) {}                                    // waiting for the window to be empty before sending the last, terminating packet
                 sndpkt = make_packet(0);                                                // make a packet of length zero to indicate end of file
 
                 start_timer();                                                          // start timer in case the packet does not reach the receiver
-                window_packets[0]->hdr.seqno = 0;                                       // add the element to the window, to be able to resend in case of timeout
-                window_packets[0]->hdr.data_size = 0;                                   // same thing for the length
+                sndpkt->hdr.seqno = 0;                                                  // add the element to the window, to be able to resend in case of timeout
+                sndpkt->hdr.data_size = 0;                                              // same thing for the length
                 window_packets[0] = sndpkt;                                             // same thing for the packet
                 send_base = window_packets[0]->hdr.seqno;                               // change the send base to the first element
 
@@ -189,6 +190,7 @@ void *send_packet (void *arguments)                                             
                 if (window_packets[i] == NULL && len != 0) 
                 {
                     window_packets[i] = sndpkt;
+                    // printf("For the %d position we have the seqno: %d\n", i, window_packets[i]->hdr.seqno);
                     VLOG (DEBUG, "> Send packet %d to %s", next_seqno,inet_ntoa(serveraddr.sin_addr));
                     break;
                 }
@@ -227,19 +229,21 @@ void *receive_ack (void *arguments)                                             
     char buffer[DATA_SIZE]; 
     int num_duplicate = 0;                                                              // counts the number of times a duplicate ACK has been received, so when it gets to three we do something about it
 
+    int example = 0;
     while (1) 
     {     
         if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)     // receive packet from the reeiver containing the ACk
         {
             error("recvfrom");
         }
+        // scanf("%d", &example);
 
         recvpkt = (tcp_packet *)buffer;                                                 // create a packet with the data received by the receiver
         assert(get_data_size(recvpkt) <= DATA_SIZE);
         ack_temp = recvpkt->hdr.ackno;                                                  // assign the acknowledgment recived to the local variable containing the variable
     
         pthread_mutex_lock(&lock);                                                      // we need to lock because the window arrays will be amended
-        
+        // printf("received ACK with value %d\n", recvpkt->hdr.ackno);
         // ===========================
         // NEW FOR TASK 2
         if (stage == 1)
@@ -279,31 +283,58 @@ void *receive_ack (void *arguments)                                             
             }
         }
         // ===========================
+        // printf("1\n");
 
-        for (int i=0; i<cwnd; i++) 
+        for (int i=0; i<cwnd; i++)
         {
-            if (window_packets[i]->hdr.ackno == ack_temp - window_packets[i]->hdr.data_size && ack_temp >= send_base)    // find the position of the window that contains the packet for the ACK received
+            if (window_packets[i] != NULL)
             {
-                send_base = window_packets[i]->hdr.seqno;                               // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
-                for (int j = i+1; j<floor(cwnd); j++) 
+                // printf("2\n");
+                // printf("Por position %d, if %d == %d and %d >= %d\n", i, window_packets[i]->hdr.seqno, ack_temp - window_packets[i]->hdr.data_size, ack_temp, send_base);
+                // printf("ACK received for seqno: %d\nSeqno: %d\nSend base: %d\n",ack_temp - window_packets[i]->hdr.data_size, window_packets[i]->hdr.ackno, send_base);
+                if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && ack_temp >= send_base)    // find the position of the window that contains the packet for the ACK received
                 {
-                    window_packets[j-i-1] = window_packets[j];                          // move up all of the packets to let the i position be first
-                    window_packets[j] = NULL;                                           // move up all of the packets to let the i position be first
-
-                }
-                VLOG(DEBUG, "> Received successful ACK for packet %d", ack_temp - window_packets[i]->hdr.data_size);    // indicate packet ACK has been successfully received
-
-                if (window_packets[0] == NULL)                                          // if the first element has been acknowledged, list is empty, so stop timer until further notice
-                {
-                    stop_timer(); 
+                    // printf("3\n");
+                    send_base = window_packets[i]->hdr.seqno;                           // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
+                    // printf("5\n");
+                    VLOG(DEBUG, "> Received successful ACK for packet %d", ack_temp - window_packets[i]->hdr.data_size);    // indicate packet ACK has been successfully received
+                    for (int j = i+1; j<floor(cwnd); j++) 
+                    {
+                        if (window_packets[j] != NULL)
+                        {
+                            window_packets[j-i-1] = window_packets[j];                  // move up all of the packets to let the i position be first
+                            window_packets[j] = NULL;                                   // move up all of the packets to let the i position be first
+                        }
+                        else 
+                        {
+                            window_packets[j-i-1] = NULL;
+                            break;
+                        }
+                        // printf("7\n");
+                    }
+                    // if (window_packets[0] != NULL)
+                    //     printf("First packet: %d\n",window_packets[0]->hdr.seqno);
+                    // printf("6\n");
+                    if (window_packets[0] == NULL)                                      // if the first element has been acknowledged, list is empty, so stop timer until further notice
+                    {
+                        stop_timer(); 
+                    }
+                    // printf("8\n");
                 }
             }
-            if (buff_packets[i]->hdr.ackno == ack_temp - buff_packets[i]->hdr.data_size)    // if the ACK received is for an element in the buff of packets and not the normal window, then look also inside of it
+            else if (buff_packets[i] != NULL)
             {
-                for (int j=i; i<MAX_WINDOW-1; i++)
-                    buff_packets[j] = buff_packets[j+1];
-                buff_packets[MAX_WINDOW-1] = NULL;
+                // printf("Checking?\n");
+                if (buff_packets[i]->hdr.seqno == ack_temp - buff_packets[i]->hdr.data_size)    // if the ACK received is for an element in the buff of packets and not the normal window, then look also inside of it
+                {
+                    // printf("4\n");
+                    for (int j=i; i<MAX_WINDOW-1; i++)
+                        buff_packets[j] = buff_packets[j+1];
+                    buff_packets[MAX_WINDOW-1] = NULL;
+                }
             }
+            // else
+            //     break;
         }
         
         pthread_mutex_unlock(&lock);                                                    // no longer need to lock the window arrays after breaking outside the for loop
