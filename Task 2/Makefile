@@ -27,7 +27,7 @@ TARGET:	$(OBJDIR) $(CLIENT)	$(SERVER)
 
 
 $(CLIENT):	$(CLIENT_OBJECTS)
-	$(LINKER)  $@  $(CLIENT_OBJECTS)
+	$(LINKER)  $@  $(CLIENT_OBJECTS) -lm
 	@echo "Link complete!"
 
 $(SERVER): $(SERVER_OBJECTS)
