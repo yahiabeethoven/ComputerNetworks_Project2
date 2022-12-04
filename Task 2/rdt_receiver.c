@@ -70,6 +70,7 @@ int main(int argc, char **argv) {
     int out_order_pkt = 0;
 
     while (1) {
+        printf("Expecting %d\n", current_packet);
         if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)        // recvfrom: receive a UDP datagram from a client
             error("ERROR in recvfrom");
         recvpkt = (tcp_packet *) buffer;
@@ -77,6 +78,7 @@ int main(int argc, char **argv) {
 
         if (current_packet != recvpkt->hdr.seqno)                                       // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
         {
+            // printf("current_packet != recvpkt->hdr.seqno");
             if (recvpkt->hdr.data_size == 0) {                                          // if the data size is 0 it means that the packet is the last packet sent to represent EOF
                 VLOG(INFO, "> End Of File has been reached!");
                 fclose(fp);
@@ -162,10 +164,11 @@ int main(int argc, char **argv) {
                     // printf("16\n");
                     pkt_buffer[size_of_buffer-1] = NULL;                                    // make sure the last one is also changed, since the for loop does not traverse through it
                     i -= 1;                                                                 // decrease i by one, since we have moved all of the elements and need to see the one holding the position where the previous one was
+                    // printf("pkt_buffer[i]->hdr.seqno < current_packet");
                 }
                 else if (current_packet == pkt_buffer[i]->hdr.seqno)
                 {
-                    printf("3\n");
+                    // printf("3\n");
                     current_packet += pkt_buffer[i]->hdr.data_size;                         // increase the current packet value by the size to see if the next one is also in 
                     gettimeofday(&tp, NULL);
                     VLOG(DEBUG, "> %lu, %d, %d (recovered from buffer)", tp.tv_sec, pkt_buffer[i]->hdr.data_size, pkt_buffer[i]->hdr.seqno);
@@ -186,6 +189,7 @@ int main(int argc, char **argv) {
                     }
                     i -= 1;                                                                 // decrease i by one, since we have moved all of the elements and need to see the one holding the position where the previous one was
                     pkt_buffer[size_of_buffer-1] = NULL;                                    // make sure the last one is also changed, since the for loop does not traverse through it
+                    // printf("current_packet == pkt_buffer[i]->hdr.seqno");
                 }
             }
             else
