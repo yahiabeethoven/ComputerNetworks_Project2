@@ -12,8 +12,8 @@ LINKER = gcc -o
 LFLAGS   = -Wall
 
 OBJDIR = ./obj
-
-CLIENT_OBJECTS := $(OBJDIR)/rdt_sender.o $(OBJDIR)/common.o $(OBJDIR)/packet.o
+# only add -lm after "rdt_sender.o" if using ubuntu
+CLIENT_OBJECTS := $(OBJDIR)/rdt_sender.o -lm $(OBJDIR)/common.o $(OBJDIR)/packet.o
 SERVER_OBJECTS := $(OBJDIR)/rdt_receiver.o $(OBJDIR)/common.o $(OBJDIR)/packet.o
 
 #Program name
