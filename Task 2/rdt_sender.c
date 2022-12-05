@@ -363,7 +363,7 @@ void *receive_ack (void *arguments)                                             
                     if (resend_ack == 0)
                     {
                         gettimeofday(&current_time,0);
-                        sample_rtt = (current_time.tv_sec - time_list[i].tv_sec) * 1000 + (current_time.tv_usec - time_list[i].tv_usec) / 1000;
+                        sample_rtt = (current_time.tv_sec - time_list[i].tv_sec) * 1000.0f + (current_time.tv_usec - time_list[i].tv_usec) / 1000.0f;
                         printf("Sample RTT: %f\n", sample_rtt);
                         if (estimated_rtt < 0)
                             estimated_rtt = sample_rtt;
