@@ -173,6 +173,7 @@ void *send_packet (void *arguments)                                             
                                                                                         once this is entered, the window array will changed so the lock must be locked to prevent 
                                                                                         receiver from making any changes to array and causing inconsistent results */
             pthread_mutex_lock(&lock);
+            VLOG(INFO, "entered send packets");
             if (buff_packets[0] == NULL)                                                // if there is any packet in the buff of packets made when the cwnd was recuced, then take the data from there instead
                 len = fread(buffer, 1, DATA_SIZE, fp);                                  // read a number of DATA_SIZE bytes from the file
             else {
@@ -188,9 +189,9 @@ void *send_packet (void *arguments)                                             
                     // buff_time_list[MAX_WINDOW-1] = NULL;
                     buff_packets[MAX_WINDOW-1] = NULL;
                 }
-                // else {
-                //     VLOG(INFO, "packet is strangely empty");
-                // }
+                else {
+                    VLOG(INFO, "packet is strangely empty");
+                }
                 
             }
             
@@ -209,7 +210,9 @@ void *send_packet (void *arguments)                                             
                 send_base = window_packets[0]->hdr.seqno;                               // change the send base to the first element
 
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);  // send the terminating packet to receiver to indicate EOF
-                while(window_packets[0] != NULL) {}                                     // waiting to receive the specific ACK for the terminating packet 0 before ending the whole loop
+                while(window_packets[0] != NULL) {
+                    VLOG(INFO,"Waiting for last ACK !!!!!!!!!");
+                }                                     // waiting to receive the specific ACK for the terminating packet 0 before ending the whole loop
                 usleep(100);                                                            // wait for a moment before finally printing that the file has ended and terminating the program
                 VLOG(INFO, "> End-of-file has been reached!");
                 stop_timer();                                                           // stop the timer we just started earlier to make sure terminating packet actually reached receiver
@@ -277,6 +280,7 @@ void *send_packet (void *arguments)                                             
 
 void *receive_ack (void *arguments)                                                     // important function to handle ACKs being received from the receiver
 {
+    
     int ack_temp = -1;                                                                  // initialize ack local var to -1, and the buffer containing the data contents 
     char buffer[DATA_SIZE]; 
     int num_duplicate = 0;                                                              // counts the number of times a duplicate ACK has been received, so when it gets to three we do something about it
@@ -284,6 +288,7 @@ void *receive_ack (void *arguments)                                             
     // int example = 0;
     while (1) 
     {     
+        VLOG(INFO, "receiver ack while loop iteration");
         if(recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)     // receive packet from the reeiver containing the ACk
         {
             error("recvfrom");
@@ -292,25 +297,28 @@ void *receive_ack (void *arguments)                                             
 
         recvpkt = (tcp_packet *)buffer;                                                 // create a packet with the data received by the receiver
         assert(get_data_size(recvpkt) <= DATA_SIZE);
-        ack_temp = recvpkt->hdr.ackno;                                                  // assign the acknowledgment recived to the local variable containing the variable
-    
+        ack_temp = recvpkt->hdr.ackno; 
+        VLOG(INFO, "Current packet ackno is: %d",recvpkt->hdr.ackno);                                                 // assign the acknowledgment recived to the local variable containing the variable
+
         pthread_mutex_lock(&lock);                                                      // we need to lock because the window arrays will be amended
         // printf("received ACK with value %d\n", recvpkt->hdr.ackno);
         // ===========================
         // NEW FOR TASK 2
         // try putting this outside
+        
         if (cwnd == ssthresh)  {                                                      // if the cwnd is equal to the slow start threshold, then enter congestion control
-            stage += 1;   
+            stage += 1;  
+            VLOG(INFO, "stage has been increased"); 
         }
         if (stage == 1)
         {
-            printf("    > Stage 2: Congestion Avoidance\n");
+            VLOG(INFO,"    > Stage 2: Congestion Avoidance");
             cwnd += (1/cwnd);
         }
 
         if (stage == 0)                                                                 // if a successful ACK was received while in the slow-start stage, then increase cwnd by 1
         {
-            printf("    > Stage 1: Slow Start\n");
+            VLOG(INFO,"    > Stage 1: Slow Start");
             cwnd += 1;                                                                  // increase cwnd by 1
             // if (cwnd == ssthresh)                                                       // if the cwnd is equal to the slow start threshold, then enter congestion control
             //     stage += 1;                                                             // increase the stage by 1, which means reaching congestion control
@@ -320,11 +328,17 @@ void *receive_ack (void *arguments)                                             
 
         if (ack_temp == send_base)                                                      // received a duplicate ACK
         {
-            printf("    > Duplicate ACK\n");
+            if (ack_temp - window_packets[0]->hdr.data_size == 0) {
+                VLOG(INFO, "received zero ack from client!!!!!");
+                window_packets[0] = NULL;
+                stop_timer(); 
+                break;
+            }
+            VLOG(INFO,"    > Duplicate ACK");
             num_duplicate += 1;                                                         // increase the counter by 1
             if (num_duplicate == 3)                                                     // if it is a triple ACK, then a packet must be lost
             {
-                printf("    > Triple duplicate ACK\n");
+                VLOG(INFO,"    > Triple duplicate ACK");
                 // FAST RETRANSMIT PHASE                                                // enter the fast retransmit stage
                 stop_timer();
                 for (int i=0;i<MAX_WINDOW;i++) 
@@ -351,6 +365,7 @@ void *receive_ack (void *arguments)                                             
             }
             // continue;
         }
+        
         // ===========================
         // printf("1\n");
 
@@ -358,6 +373,7 @@ void *receive_ack (void *arguments)                                             
         {
             if (window_packets[i] != NULL)
             {
+                VLOG(INFO, "iteration %d through window packets",i);
                 // printf("2\n");
                 // printf("Por position %d, if %d == %d and %d >= %d\n", i, window_packets[i]->hdr.seqno, ack_temp - window_packets[i]->hdr.data_size, ack_temp, send_base);
                 // printf("ACK received for seqno: %d\nSeqno: %d\nSend base: %d\n",ack_temp - window_packets[i]->hdr.data_size, window_packets[i]->hdr.ackno, send_base);
@@ -368,7 +384,7 @@ void *receive_ack (void *arguments)                                             
                     {
                         gettimeofday(&current_time,0);
                         sample_rtt = (current_time.tv_sec - time_list[i].tv_sec) * 1000.0f + (current_time.tv_usec - time_list[i].tv_usec) / 1000.0f;
-                        printf("Sample RTT: %f\n", sample_rtt);
+                        VLOG(DEBUG,"Sample RTT: %f", sample_rtt);
                         if (estimated_rtt < 0)
                             estimated_rtt = sample_rtt;
                         else
@@ -394,19 +410,25 @@ void *receive_ack (void *arguments)                                             
                         else 
                         {
                             window_packets[j-i-1] = NULL;
+                            if (j-i-1 == 0) {
+                                VLOG(INFO, "only first left ######");
+                            }
+                            // stop_timer();
                             // time_list[j-i-1] = NULL;
                             break;
                         }
                         // printf("7\n");
                     }
+                    if (window_packets[0] == NULL)                                      // if the first element has been acknowledged, list is empty, so stop timer until further notice
+                    {
+                        stop_timer(); 
+                        break;
+                    }
                     init_timer(timeout_interval, resend_packets);
                     // if (window_packets[0] != NULL)
                     //     printf("First packet: %d\n",window_packets[0]->hdr.seqno);
                     // printf("6\n");
-                    if (window_packets[0] == NULL)                                      // if the first element has been acknowledged, list is empty, so stop timer until further notice
-                    {
-                        stop_timer(); 
-                    }
+                    
                     // printf("8\n");
                 }
             }
@@ -428,13 +450,16 @@ void *receive_ack (void *arguments)                                             
 
         }
         
-        pthread_mutex_unlock(&lock);                                                    // no longer need to lock the window arrays after breaking outside the for loop
+        pthread_mutex_unlock(&lock);   
+        VLOG(INFO, "unlocked lock");    // indicate packet ACK has been successfully received
+                                                 // no longer need to lock the window arrays after breaking outside the for loop
     
         if (end_loop == 1)                                                              // keep running until the condition is 1 (from the function "send_packet"), where you break after
         {
             break;
         }  
         ack_temp = -1;
+        VLOG(INFO, "ack set to -1");
         usleep(100);
     }
     return NULL;
@@ -459,6 +484,7 @@ void graphCwnd() {
     fprintf(cwndFile,"%f,%f,%d\n",timeToPrint,cwnd,ssthresh);
     VLOG(INFO,"printed to file: %f, %f, %d", timeToPrint,cwnd,ssthresh);
     fclose(cwndFile);
+    VLOG(INFO, "closed cwnd file properly");
 
 }
 
@@ -510,7 +536,7 @@ int main (int argc, char **argv)
     }
 
     if (pthread_mutex_init(&lock, NULL) != 0) {                                         // try to initialize the lock used for exclusively changing the window arrows in send_packet and receive_ack, if failed exit the program
-        printf("mutex init failed\n");
+        VLOG(INFO,"mutex init failed");
         return 1;
     }
     arguments_send.file = fp;

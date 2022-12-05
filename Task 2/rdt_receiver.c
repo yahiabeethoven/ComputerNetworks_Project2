@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
     int out_order_pkt = 0;
 
     while (1) {
-        printf("Expecting %d\n", current_packet);
+        VLOG(DEBUG,"Expecting %d or terminating zero packet", current_packet);
         if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)        // recvfrom: receive a UDP datagram from a client
             error("ERROR in recvfrom");
         recvpkt = (tcp_packet *) buffer;
