@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 from argparse import ArgumentParser
+import re
 
 def scale(a):
     return a/1000000.0
@@ -32,7 +33,8 @@ BW = []
 nextTime = 1000
 cnt = 0
 for line in f1:
-    if int(line.strip()) > nextTime:
+    #if int(float(line.strip())) > nextTime:
+    if int(float(re.split(r'[\"]?([0-9\.]*)[\"]?',line)[1])) > nextTime:
         BW.append(cnt*1492*8)
         cnt = 0
         nextTime+=1000
@@ -50,17 +52,21 @@ traceDL = open (args.dir+"/"+str(args.name), 'r')
 traceDL.readline()
 
 tmp = traceDL.readline().strip().split(",")
-bytes = int(tmp[1])
-startTime = float(tmp[0])
+#bytes = int(tmp[1])
+#bytes = int(float(re.split(r'[\"]?([0-9\.]*)[\"]?',tmp[1])[1]))
+bytes = 6
+startTime = float(re.split(r'[\"]?([0-9\.]*)[\"]?',tmp[0])[1])
 stime=float(startTime)
 
 for time in traceDL:
-    if (float(time.strip().split(",")[0]) - float(startTime)) <= 1.0:
-        bytes += int(time.strip().split(",")[1])
+    if (float(re.split(r'[\"]?([0-9\.]*)[\"]?',time)[1]) - float(startTime)) <= 1.0:
+    #if (float(time.strip().split(",")[0]) - float(startTime)) <= 1.0:
+        #bytes += int(time.strip().split(",")[1])
+        bytes += int(float(re.split(r'[\"]?([0-9\.]*)[\"]?',time)[1]))
     else:
         throughputDL.append(bytes*8/1000000.0)
         timeDL.append(float(startTime)-stime)
-        bytes = int(time.strip().split(",")[1])
+        bytes = int(float(re.split(r'[\"]?([0-9\.]*)[\"]?',time)[1]))
         startTime += 1.0
 
 print (timeDL)
