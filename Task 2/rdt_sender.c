@@ -115,8 +115,11 @@ void resend_packets(int sig)                                                    
                 // time_list[i] = NULL;
             }
             cwnd = 1;
-            graphCwnd();
             ssthresh = MAX(cwnd/2, 2);
+            graphCwnd();
+        }
+        else {
+            VLOG(INFO, "timeout occurred during congestion avoidance!!!");
         }
     }
 }
@@ -295,6 +298,10 @@ void *receive_ack (void *arguments)                                             
         // printf("received ACK with value %d\n", recvpkt->hdr.ackno);
         // ===========================
         // NEW FOR TASK 2
+        // try putting this outside
+        if (cwnd == ssthresh)  {                                                      // if the cwnd is equal to the slow start threshold, then enter congestion control
+            stage += 1;   
+        }
         if (stage == 1)
         {
             printf("    > Stage 2: Congestion Avoidance\n");
@@ -309,10 +316,7 @@ void *receive_ack (void *arguments)                                             
             //     stage += 1;                                                             // increase the stage by 1, which means reaching congestion control
         }
         graphCwnd();
-        // try putting this outside
-        if (cwnd == ssthresh)  {                                                      // if the cwnd is equal to the slow start threshold, then enter congestion control
-            stage += 1;   
-        }
+        
 
         if (ack_temp == send_base)                                                      // received a duplicate ACK
         {
