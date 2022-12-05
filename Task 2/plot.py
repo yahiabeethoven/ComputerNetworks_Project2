@@ -23,21 +23,21 @@ parser.add_argument('--name', '-n',
 
 args = parser.parse_args()
 
-data = np.genfromtxt(args.dir+"/"+str(args.name), delimiter=",", names=["timems","window","ssthresh"])
+data = np.genfromtxt(args.dir+"/"+str(args.name), delimiter=",", names=["time","window","ssthresh"])
 
 f = plt.figure()
 f.set_figwidth(30)
 f.set_figheight(2)
 
 #window
-plt.plot(data['timems'], data['window'], label = "CWND")
+plt.plot(data['time'], data['window'], label = "CWND")
 #thresh
-plt.plot(data['timems'], data['ssthresh'], label = "SS_Thresh")
+plt.plot(data['time'], data['ssthresh'], label = "SS Threshold")
 plt.legend()
 
-plt.xlabel("time (ms)")
-plt.title("CWND and SS_Thresh throughout time")
-plt.savefig(args.dir+'/Graph.png',dpi=150,bbox_inches='tight')
+plt.xlabel("Time (ms)")
+plt.title("CWND and SS Threshold throughout the TCP Program")
+plt.savefig(args.dir+'/cwndGraph.png',dpi=150,bbox_inches='tight')
 
 # fig = plt.figure(figsize=(21,3), facecolor='w')
 # ax = plt.gca()
