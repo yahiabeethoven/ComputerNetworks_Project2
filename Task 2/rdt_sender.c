@@ -57,6 +57,7 @@ sigset_t sigmask;
 tcp_packet *window_packets[MAX_WINDOW];                                                 // list to store the pointers where the packets are stored
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
 int end_loop = 0;
+void graphCwnd();
 
 pthread_mutex_t lock;                                                                   // lock to only allow exclusive access for sender or receiver to the window at a given moment
 
@@ -114,6 +115,7 @@ void resend_packets(int sig)                                                    
                 // time_list[i] = NULL;
             }
             cwnd = 1;
+            graphCwnd();
             ssthresh = MAX(cwnd/2, 2);
         }
     }
@@ -297,8 +299,13 @@ void *receive_ack (void *arguments)                                             
         {
             printf("    > Stage 1: Slow Start\n");
             cwnd += 1;                                                                  // increase cwnd by 1
-            if (cwnd == ssthresh)                                                       // if the cwnd is equal to the slow start threshold, then enter congestion control
-                stage += 1;                                                             // increase the stage by 1, which means reaching congestion control
+            // if (cwnd == ssthresh)                                                       // if the cwnd is equal to the slow start threshold, then enter congestion control
+            //     stage += 1;                                                             // increase the stage by 1, which means reaching congestion control
+        }
+        graphCwnd();
+        // try putting this outside
+        if (cwnd == ssthresh)  {                                                      // if the cwnd is equal to the slow start threshold, then enter congestion control
+            stage += 1;   
         }
 
         if (ack_temp == send_base)                                                      // received a duplicate ACK
@@ -326,7 +333,8 @@ void *receive_ack (void *arguments)                                             
                     // time_list[i] = NULL;
                 }
                 cwnd = 1;                                                               // let the cwnd be 1 again
-                ssthresh = MAX(cwnd/2, 2);                                              // let the new ssthresh be max(cwnd/2,2)
+                ssthresh = MAX(cwnd/2, 2);  
+                graphCwnd();                                            // let the new ssthresh be max(cwnd/2,2)
                 stage = 0;                                                              // go back to slow start phase
                 num_duplicate = 0;                                                      // change the counter back to 0 after the fast retransmit phase
                 resend_three_ack();
@@ -422,6 +430,24 @@ void *receive_ack (void *arguments)                                             
     return NULL;
 }
 
+void graphCwnd() {
+    FILE *cwndFile;
+    cwndFile = fopen("CWND.csv","a");
+    float timeToPrint; 
+
+    if (cwndFile) {
+        struct timeval innerTime;
+        gettimeofday(&innerTime,0);
+        
+        timeToPrint = (innerTime.tv_sec - current_time.tv_sec) * 1000.0f + (innerTime.tv_usec - current_time.tv_usec) / 1000.0f;
+    }
+    else {
+        printf("could not write into CWND file\n");
+    }
+    printf(cwndFile,"%f,%f,%f\n",timeToPrint,cwnd,ssthresh);
+    fclose(cwndFile);
+
+}
 
 int main (int argc, char **argv)
 {
