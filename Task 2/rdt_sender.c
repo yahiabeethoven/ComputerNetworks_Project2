@@ -445,6 +445,7 @@ void graphCwnd() {
         printf("could not write into CWND file\n");
     }
     printf(cwndFile,"%f,%f,%f\n",timeToPrint,cwnd,ssthresh);
+    printf("printed to file: %f, %f, %f\n", timeToPrint,cwnd,ssthresh);
     fclose(cwndFile);
 
 }
