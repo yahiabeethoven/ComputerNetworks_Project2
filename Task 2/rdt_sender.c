@@ -174,15 +174,21 @@ void *send_packet (void *arguments)                                             
                 len = fread(buffer, 1, DATA_SIZE, fp);                                  // read a number of DATA_SIZE bytes from the file
             else {
                 len = buff_packets[0]->hdr.data_size;
-                next_seqno = buff_packets[0]->hdr.seqno;
-                memcpy(buffer,buff_packets[0]->data, len);
-                for (int i=0; i<MAX_WINDOW-1; i++)                                      // move all of the items up when one is sent
-                {
-                    buff_packets[i] = buff_packets[i+1];
-                    buff_time_list[i] = buff_time_list[i+1];
-                }   
-                // buff_time_list[MAX_WINDOW-1] = NULL;
-                buff_packets[MAX_WINDOW-1] = NULL;
+                if (len > 0) {
+                    next_seqno = buff_packets[0]->hdr.seqno;
+                    memcpy(buffer,buff_packets[0]->data, len);
+                    for (int i=0; i<MAX_WINDOW-1; i++)                                      // move all of the items up when one is sent
+                    {
+                        buff_packets[i] = buff_packets[i+1];
+                        buff_time_list[i] = buff_time_list[i+1];
+                    }   
+                    // buff_time_list[MAX_WINDOW-1] = NULL;
+                    buff_packets[MAX_WINDOW-1] = NULL;
+                }
+                // else {
+                //     VLOG(INFO, "packet is strangely empty");
+                // }
+                
             }
             
             if (len <= 0)                                                               // if the length of bytes read from file is 0, it means we have reached the end of file
@@ -434,18 +440,20 @@ void graphCwnd() {
     FILE *cwndFile;
     cwndFile = fopen("CWND.csv","a");
     float timeToPrint; 
+    struct timeval innerTime;
 
     if (cwndFile) {
-        struct timeval innerTime;
+        
         gettimeofday(&innerTime,0);
         
         timeToPrint = (innerTime.tv_sec - current_time.tv_sec) * 1000.0f + (innerTime.tv_usec - current_time.tv_usec) / 1000.0f;
     }
     else {
-        printf("could not write into CWND file\n");
+        VLOG(INFO,"could not write into CWND file");
+        exit(1);
     }
-    printf(cwndFile,"%f,%f,%f\n",timeToPrint,cwnd,ssthresh);
-    printf("printed to file: %f, %f, %f\n", timeToPrint,cwnd,ssthresh);
+    fprintf(cwndFile,"%f,%f,%d\n",timeToPrint,cwnd,ssthresh);
+    VLOG(INFO,"printed to file: %f, %f, %d", timeToPrint,cwnd,ssthresh);
     fclose(cwndFile);
 
 }
