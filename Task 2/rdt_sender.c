@@ -57,6 +57,7 @@ sigset_t sigmask;
 tcp_packet *window_packets[MAX_WINDOW];                                                 // list to store the pointers where the packets are stored
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
 int end_loop = 0;
+int finisher = 0;
 void graphCwnd();
 
 pthread_mutex_t lock;                                                                   // lock to only allow exclusive access for sender or receiver to the window at a given moment
@@ -210,9 +211,14 @@ void *send_packet (void *arguments)                                             
                 send_base = window_packets[0]->hdr.seqno;                               // change the send base to the first element
 
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);  // send the terminating packet to receiver to indicate EOF
-                while(window_packets[0] != NULL) {
-                    VLOG(INFO,"Waiting for last ACK !!!!!!!!!");
-                }                                     // waiting to receive the specific ACK for the terminating packet 0 before ending the whole loop
+                // while(window_packets[0] != NULL) {
+                //     VLOG(DEBUG, "window packets: %d",window_packets[0]);
+                //     // VLOG(INFO,"Waiting for last ACK !!!!!!!!!");
+                // } 
+                while(finisher == 0 && window_packets[0] != NULL) {
+                    VLOG(DEBUG, "window packets: %d",window_packets[0]);
+                    // VLOG(INFO,"Waiting for last ACK !!!!!!!!!");
+                }                                    // waiting to receive the specific ACK for the terminating packet 0 before ending the whole loop
                 usleep(100);                                                            // wait for a moment before finally printing that the file has ended and terminating the program
                 VLOG(INFO, "> End-of-file has been reached!");
                 stop_timer();                                                           // stop the timer we just started earlier to make sure terminating packet actually reached receiver
@@ -328,12 +334,12 @@ void *receive_ack (void *arguments)                                             
 
         if (ack_temp == send_base)                                                      // received a duplicate ACK
         {
-            if (ack_temp - window_packets[0]->hdr.data_size == 0) {
-                VLOG(INFO, "received zero ack from client!!!!!");
-                window_packets[0] = NULL;
-                stop_timer(); 
-                break;
-            }
+            // if (ack_temp - window_packets[0]->hdr.data_size == 0) {
+            //     VLOG(INFO, "received zero ack from client!!!!!");
+            //     window_packets[0] = NULL;
+            //     stop_timer(); 
+            //     break;
+            // }
             VLOG(INFO,"    > Duplicate ACK");
             num_duplicate += 1;                                                         // increase the counter by 1
             if (num_duplicate == 3)                                                     // if it is a triple ACK, then a packet must be lost
@@ -419,9 +425,10 @@ void *receive_ack (void *arguments)                                             
                         }
                         // printf("7\n");
                     }
-                    if (window_packets[0] == NULL)                                      // if the first element has been acknowledged, list is empty, so stop timer until further notice
+                    if (window_packets[0] == NULL || window_packets[0] < 0)                                      // if the first element has been acknowledged, list is empty, so stop timer until further notice
                     {
                         stop_timer(); 
+                        finisher = 1;
                         break;
                     }
                     init_timer(timeout_interval, resend_packets);
