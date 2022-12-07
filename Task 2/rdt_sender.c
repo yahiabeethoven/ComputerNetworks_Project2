@@ -145,6 +145,11 @@ void resend_three_ack()                                                         
     resend_ack = 1;
     if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
         error("sendto");
+
+    ssthresh = MAX(cwnd/2, 2);
+    cwnd = 1; 
+    stage = 0; 
+    graphCwnd(); 
     start_timer();
 }
 
@@ -215,8 +220,8 @@ void *send_packet (void *arguments)                                             
                 //     VLOG(DEBUG, "window packets: %d",window_packets[0]);
                 //     // VLOG(INFO,"Waiting for last ACK !!!!!!!!!");
                 // } 
-                while(finisher == 0 && window_packets[0] != NULL) {
-                    VLOG(DEBUG, "window packets: %d",window_packets[0]);
+                while(finisher == 0) {
+                    VLOG(DEBUG, "window packets: %p",window_packets[0]);
                     // VLOG(INFO,"Waiting for last ACK !!!!!!!!!");
                 }                                    // waiting to receive the specific ACK for the terminating packet 0 before ending the whole loop
                 usleep(100);                                                            // wait for a moment before finally printing that the file has ended and terminating the program
@@ -362,12 +367,10 @@ void *receive_ack (void *arguments)                                             
                     window_packets[i] = NULL;
                     // time_list[i] = NULL;
                 }
-                cwnd = 1;                                                               // let the cwnd be 1 again
-                ssthresh = MAX(cwnd/2, 2);  
-                graphCwnd();                                            // let the new ssthresh be max(cwnd/2,2)
-                stage = 0;                                                              // go back to slow start phase
-                num_duplicate = 0;                                                      // change the counter back to 0 after the fast retransmit phase
+                                                                            // go back to slow start phase
+                                                                      // change the counter back to 0 after the fast retransmit phase
                 resend_three_ack();
+                num_duplicate = 0;
             }
             // continue;
         }
