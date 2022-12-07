@@ -250,8 +250,16 @@ void *send_packet (void *arguments)                                             
                 }
             }
             int tempSB = send_base;
+            // if (window_packets[0]->hdr.seqno - tempSB <= DATA_SIZE) {
+            //     send_base = window_packets[0]->hdr.seqno;
+            //     VLOG(DEBUG, "(Send Packet) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);                                   // the send base will always be the first element in the window
+            // }
+            // else {
+            //     VLOG(DEBUG, "Attempted send base %d too far ^^^^^^^^",window_packets[0]->hdr.seqno);
+            // }
             send_base = window_packets[0]->hdr.seqno;
-            VLOG(DEBUG, "(Send Packetl) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);                                   // the send base will always be the first element in the window
+            VLOG(DEBUG, "(Send Packet) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base); 
+            
             next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
 
             if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)   // send the packet object to receiver and catch errors in sending
@@ -392,7 +400,7 @@ void *receive_ack (void *arguments)                                             
                 // printf("2\n");
                 // printf("Por position %d, if %d == %d and %d >= %d\n", i, window_packets[i]->hdr.seqno, ack_temp - window_packets[i]->hdr.data_size, ack_temp, send_base);
                 // printf("ACK received for seqno: %d\nSeqno: %d\nSend base: %d\n",ack_temp - window_packets[i]->hdr.data_size, window_packets[i]->hdr.ackno, send_base);
-                if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && ack_temp >= send_base)    // find the position of the window that contains the packet for the ACK received
+                if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && ack_temp > send_base && send_base <= window_packets[i]->hdr.seqno)    // find the position of the window that contains the packet for the ACK received
                 {
                     // RECALCULATE TIMEOUT INTERVAL
                     if (resend_ack == 0)
@@ -411,10 +419,13 @@ void *receive_ack (void *arguments)                                             
                     }
                     // printf("3\n");
                     int tempSB = send_base;
-                    send_base = window_packets[i]->hdr.seqno;                           // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
-                    VLOG(DEBUG, "(Receive ack) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);                                   // the send base will always be the first element in the window
+                    send_base = window_packets[i]->hdr.seqno;  
+                    if (tempSB != send_base) {
+                        VLOG(DEBUG, "(Receive ack) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);                                   // the send base will always be the first element in the window
+                    }                         // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
                     // printf("5\n");
                     VLOG(DEBUG, "> Received successful ACK for packet %d", ack_temp - window_packets[i]->hdr.data_size);    // indicate packet ACK has been successfully received
+                    stop_timer();
                     for (int j = i+1; j<floor(cwnd); j++) 
                     {
                         if (window_packets[j] != NULL)
@@ -438,6 +449,7 @@ void *receive_ack (void *arguments)                                             
                     }
                     if (window_packets[0] == NULL || window_packets[0] < 0)                                      // if the first element has been acknowledged, list is empty, so stop timer until further notice
                     {
+                        // send_base = window_packets[0]->hdr.seqno;
                         stop_timer(); 
                         finisher = 1;
                         break;
