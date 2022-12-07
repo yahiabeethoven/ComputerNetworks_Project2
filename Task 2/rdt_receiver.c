@@ -70,11 +70,12 @@ int main(int argc, char **argv) {
     int out_order_pkt = 0;
 
     while (1) {
-        VLOG(DEBUG,"Expecting %d or terminating zero packet", current_packet);
         if (recvfrom(sockfd, buffer, MSS_SIZE, 0, (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)        // recvfrom: receive a UDP datagram from a client
             error("ERROR in recvfrom");
         recvpkt = (tcp_packet *) buffer;
-        assert(get_data_size(recvpkt) <= DATA_SIZE);  
+        assert(get_data_size(recvpkt) <= DATA_SIZE);
+        VLOG(DEBUG,"Expecting %d, received %d", current_packet, recvpkt->hdr.seqno);
+  
 
         if (current_packet != recvpkt->hdr.seqno)                                       // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
         {
@@ -99,6 +100,9 @@ int main(int argc, char **argv) {
                 if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
                     error("ERROR in sendto");
                 }
+                VLOG(INFO, "!!!!Packet number less than expected");
+
+               
             }
 
             if (recvpkt->hdr.seqno > current_packet)                                    // the packet received is out-of-order, so buffer
