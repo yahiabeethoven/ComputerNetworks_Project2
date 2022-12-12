@@ -159,7 +159,8 @@ void *send_packet (void *arguments)                                             
     struct args_send_packet * args = (struct args_send_packet *) arguments;             // store the values of the argument attributes for use in the function
 
     int len;  
-    int tempSB;                                                                          // length of the packet to be read and sent to receiver
+    int tempSB;  
+    // tcp_packet* tempFirst;                                                                        // length of the packet to be read and sent to receiver
     
     char buffer[DATA_SIZE];                                                             // buffer array to store the data contents from file and send to receiver in a packet
     
@@ -238,7 +239,7 @@ void *send_packet (void *arguments)                                             
                 end_loop = 1;                                                           // let the program end when it reaches EOF
                 return NULL;
             }
-
+            // tempFirst = window_packets[0];
             sndpkt = make_packet(len);                                                  // create packet with corresponding number of byte sread from file
             memcpy(sndpkt->data, buffer, len);                                          // copy data contents from buffer to packet object
             sndpkt->hdr.seqno = next_seqno;                                             // set the packet seq number to the next seq number as per TCP Protocol
@@ -246,6 +247,35 @@ void *send_packet (void *arguments)                                             
             for (int i=0; i<cwnd; i++) {                                                // get the position of the window in which the next paacket ID will be located
                 if (window_packets[i] == NULL && len != 0) 
                 {
+                    // if (i == 0 && (sndpkt->hdr.data_size != 0)) {
+                    //     if (sndpkt->hdr.seqno > send_base) {
+                    //         window_packets[i] = sndpkt;
+                    //         if (tempFirst != sndpkt) {
+                    //             VLOG(DEBUG, "FIRST WINDOW PACKET CHANGED FROM %p TO %p",tempFirst, sndpkt);
+                    //         } 
+                             
+                    //     }
+                    //     else {
+                    //         window_packets[i] = sndpkt;
+                    //         VLOG(DEBUG, "SNDPKT %p IS LESS THAN FIRST WINDOW PACKET&&&", sndpkt);
+                    //     }
+                    //     gettimeofday(&current_time,0);
+                    //     time_list[i] = current_time;
+                    //     VLOG (DEBUG, "> Send packet %d to %s", next_seqno,inet_ntoa(serveraddr.sin_addr));
+                    //     break;
+                    // }
+                    // else {
+                    //     window_packets[i] = sndpkt;
+                    //     gettimeofday(&current_time,0);
+                    //     time_list[i] = current_time;
+                    //     VLOG (DEBUG, "> Send packet %d to %s", next_seqno,inet_ntoa(serveraddr.sin_addr));
+                    //     break;
+                    // }
+                    if (i == 0) {
+                        if (sndpkt) {
+                            VLOG(DEBUG, "Window[0] is: %d",sndpkt->hdr.seqno);
+                        }
+                    }
                     window_packets[i] = sndpkt;
                     gettimeofday(&current_time,0);
                     time_list[i] = current_time;
@@ -264,7 +294,7 @@ void *send_packet (void *arguments)                                             
             send_base = window_packets[0]->hdr.seqno;
             if (tempSB != send_base) {
                 if (send_base < tempSB) {
-                    VLOG(INFO, "(Send Packet) SEND BASE DECREASED! <<<<<<<<< FROM %d TO %d", tempSB, send_base);
+                    VLOG(DEBUG, "(Send Packet) SEND BASE DECREASED! <<<<<<<<< FROM %d TO %d", tempSB, send_base);
                 }
                 else {
                     VLOG(DEBUG, "(Send Packet) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);
