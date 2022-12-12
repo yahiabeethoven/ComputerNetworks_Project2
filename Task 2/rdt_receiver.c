@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
         assert(get_data_size(recvpkt) <= DATA_SIZE);
         VLOG(DEBUG,"Expecting %d, received %d", current_packet, recvpkt->hdr.seqno);
   
-
+        // int temp = current_packet;
         if (current_packet != recvpkt->hdr.seqno)                                       // if the packet received is not the exepcted packet in order, then continue because maybe it will come later
         {
             // printf("current_packet != recvpkt->hdr.seqno");
@@ -95,7 +95,9 @@ int main(int argc, char **argv) {
             if (recvpkt->hdr.seqno < current_packet)                                    // if the received packet has a sequence number less than the one received, sent an ACK since the previous ack probably was not received properly
             {
                 sndpkt = make_packet(0);
+                // sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
                 sndpkt->hdr.ackno = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
+                // sndpkt->hdr.ackno = current_packet;
                 sndpkt->hdr.ctr_flags = ACK;
                 if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
                     error("ERROR in sendto");
@@ -105,7 +107,7 @@ int main(int argc, char **argv) {
                
             }
 
-            if (recvpkt->hdr.seqno > current_packet)                                    // the packet received is out-of-order, so buffer
+            else if (recvpkt->hdr.seqno > current_packet)                                    // the packet received is out-of-order, so buffer
             {
                 for (int i=0; i<size_of_buffer; i++) 
                 {
@@ -124,9 +126,12 @@ int main(int argc, char **argv) {
             }
             continue;
         }
-        else                                                                            // in task 2, this else means that the packet received is the first packet in the window, so there is a possibility that the out-of-order packets buffered are directly after
+        else {
             current_packet += recvpkt->hdr.data_size;                                   // if it is the packet expected, then send acknowledgement
-
+        }                                                                            // in task 2, this else means that the packet received is the first packet in the window, so there is a possibility that the out-of-order packets buffered are directly after
+        // if (temp != recvpkt->hdr.seqno)  {
+        //     VLOG(INFO, "STILL IN THE WHILE LOOP!");
+        // }
         gettimeofday(&tp, NULL);
         VLOG(DEBUG, "> %lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
         // printf("10\n");

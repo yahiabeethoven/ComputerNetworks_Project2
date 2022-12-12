@@ -72,7 +72,7 @@ struct args_rec_ack {};                                                         
 
 void start_timer()                                                                      // function to start timer whenever it resets to track packets that have not been successfully ACKed
 {
-    printf("START TIMER with time %f\n", timeout_interval);
+    // printf("START TIMER with time %f\n", timeout_interval);
     sigprocmask(SIG_UNBLOCK, &sigmask, NULL);
     setitimer(ITIMER_REAL, &timer, NULL);
 }
@@ -158,7 +158,8 @@ void *send_packet (void *arguments)                                             
 {
     struct args_send_packet * args = (struct args_send_packet *) arguments;             // store the values of the argument attributes for use in the function
 
-    int len;                                                                            // length of the packet to be read and sent to receiver
+    int len;  
+    int tempSB;                                                                          // length of the packet to be read and sent to receiver
     
     char buffer[DATA_SIZE];                                                             // buffer array to store the data contents from file and send to receiver in a packet
     
@@ -180,6 +181,7 @@ void *send_packet (void *arguments)                                             
                                                                                         once this is entered, the window array will changed so the lock must be locked to prevent 
                                                                                         receiver from making any changes to array and causing inconsistent results */
             pthread_mutex_lock(&lock);
+            
             // VLOG(INFO, "entered send packets");
             if (buff_packets[0] == NULL)                                                // if there is any packet in the buff of packets made when the cwnd was recuced, then take the data from there instead
                 len = fread(buffer, 1, DATA_SIZE, fp);                                  // read a number of DATA_SIZE bytes from the file
@@ -201,7 +203,7 @@ void *send_packet (void *arguments)                                             
                 }
                 
             }
-            
+            tempSB = send_base;
             if (len <= 0)                                                               // if the length of bytes read from file is 0, it means we have reached the end of file
             {
                 pthread_mutex_unlock(&lock);                                            // we no longer need the lock, so unlock so the receiver can edit the window arrays if needed
@@ -214,11 +216,13 @@ void *send_packet (void *arguments)                                             
                 window_packets[0] = sndpkt;                                             // same thing for the packet
                 gettimeofday(&current_time,0);
                 time_list[0] = current_time;
-                int tempSB = send_base;
+                
             
-                send_base = window_packets[0]->hdr.seqno;                               // change the send base to the first element
-                VLOG(DEBUG, "(Len == 0) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);
-
+                send_base = window_packets[0]->hdr.seqno; 
+                if (tempSB != send_base) {
+                    VLOG(DEBUG, "(Len == 0) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);
+                }                              // change the send base to the first element
+                
                 sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0, (const struct sockaddr *)&serveraddr, serverlen);  // send the terminating packet to receiver to indicate EOF
                 // while(window_packets[0] != NULL) {
                 //     VLOG(DEBUG, "window packets: %d",window_packets[0]);
@@ -249,7 +253,7 @@ void *send_packet (void *arguments)                                             
                     break;
                 }
             }
-            int tempSB = send_base;
+            // int tempSB = send_base;
             // if (window_packets[0]->hdr.seqno - tempSB <= DATA_SIZE) {
             //     send_base = window_packets[0]->hdr.seqno;
             //     VLOG(DEBUG, "(Send Packet) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);                                   // the send base will always be the first element in the window
@@ -258,7 +262,16 @@ void *send_packet (void *arguments)                                             
             //     VLOG(DEBUG, "Attempted send base %d too far ^^^^^^^^",window_packets[0]->hdr.seqno);
             // }
             send_base = window_packets[0]->hdr.seqno;
-            VLOG(DEBUG, "(Send Packet) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base); 
+            if (tempSB != send_base) {
+                if (send_base < tempSB) {
+                    VLOG(INFO, "(Send Packet) SEND BASE DECREASED! <<<<<<<<< FROM %d TO %d", tempSB, send_base);
+                }
+                else {
+                    VLOG(DEBUG, "(Send Packet) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);
+                }
+            }
+            
+             
             
             next_seqno += len;                                                          // the next sequence number is increased by the size of the package sent
 
@@ -385,10 +398,10 @@ void *receive_ack (void *arguments)                                             
                                                                       // change the counter back to 0 after the fast retransmit phase
                 resend_three_ack();
                 num_duplicate = 0;
+                // continue;
             }
-            // continue;
+            
         }
-        
         // ===========================
         // printf("1\n");
 
@@ -400,7 +413,8 @@ void *receive_ack (void *arguments)                                             
                 // printf("2\n");
                 // printf("Por position %d, if %d == %d and %d >= %d\n", i, window_packets[i]->hdr.seqno, ack_temp - window_packets[i]->hdr.data_size, ack_temp, send_base);
                 // printf("ACK received for seqno: %d\nSeqno: %d\nSend base: %d\n",ack_temp - window_packets[i]->hdr.data_size, window_packets[i]->hdr.ackno, send_base);
-                if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && ack_temp > send_base && send_base <= window_packets[i]->hdr.seqno)    // find the position of the window that contains the packet for the ACK received
+                if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && ack_temp > send_base && send_base <= window_packets[i]->hdr.seqno)    // find the position of the window that contains the packet for the ACK received                
+                // if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && send_base <= window_packets[i]->hdr.seqno)    // find the position of the window that contains the packet for the ACK received
                 {
                     // RECALCULATE TIMEOUT INTERVAL
                     if (resend_ack == 0)
