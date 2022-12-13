@@ -118,7 +118,9 @@ int main(int argc, char **argv) {
                     }
                 }
                 sndpkt = make_packet(0);                                                // sending duplicate ACK, which has the same value as the previous ACK sent
-                sndpkt->hdr.ackno = out_order_pkt;                                      // let the ack number be the out-of-order pkt sequence number
+                sndpkt->hdr.ackno = out_order_pkt;   
+                // sndpkt->hdr.ackno = current_packet;
+                VLOG(DEBUG, "Out of order: %d, Current packet: %d",out_order_pkt,current_packet);                                   // let the ack number be the out-of-order pkt sequence number
                 sndpkt->hdr.ctr_flags = ACK;
                 if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0, (struct sockaddr *) &clientaddr, clientlen) < 0) {
                     error("ERROR in sendto");
@@ -128,7 +130,8 @@ int main(int argc, char **argv) {
         }
         else {
             current_packet += recvpkt->hdr.data_size;                                   // if it is the packet expected, then send acknowledgement
-        }                                                                            // in task 2, this else means that the packet received is the first packet in the window, so there is a possibility that the out-of-order packets buffered are directly after
+        }  
+        VLOG(DEBUG, "Out of order: %d, Current packet: %d",out_order_pkt,current_packet);                                   // let the ack number be the out-of-order pkt sequence number                                                                          // in task 2, this else means that the packet received is the first packet in the window, so there is a possibility that the out-of-order packets buffered are directly after
         // if (temp != recvpkt->hdr.seqno)  {
         //     VLOG(INFO, "STILL IN THE WHILE LOOP!");
         // }

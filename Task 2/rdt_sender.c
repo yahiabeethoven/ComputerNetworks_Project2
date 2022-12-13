@@ -249,7 +249,7 @@ void *send_packet (void *arguments)                                             
                 //     // VLOG(INFO,"Waiting for last ACK !!!!!!!!!");
                 // } 
                 while(finisher == 0) {
-                    VLOG(DEBUG, "window packets: %p",window_packets[0]);
+                    // VLOG(DEBUG, "window packets: %p",window_packets[0]);
                     // VLOG(INFO,"Waiting for last ACK !!!!!!!!!");
                 }                                    // waiting to receive the specific ACK for the terminating packet 0 before ending the whole loop
                 usleep(100);                                                            // wait for a moment before finally printing that the file has ended and terminating the program
@@ -292,7 +292,7 @@ void *send_packet (void *arguments)                                             
                     // }
                     if (i == 0) {
                         if (sndpkt) {
-                            VLOG(DEBUG, "Window[0] is: %d",sndpkt->hdr.seqno);
+                            // VLOG(DEBUG, "Window[0] is: %d",sndpkt->hdr.seqno);
                         }
                     }
                     window_packets[i] = sndpkt;
@@ -316,7 +316,7 @@ void *send_packet (void *arguments)                                             
                     VLOG(DEBUG, "(Send Packet) SEND BASE DECREASED! <<<<<<<<< FROM %d TO %d", tempSB, send_base);
                 }
                 else {
-                    VLOG(DEBUG, "(Send Packet) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);
+                    // VLOG(DEBUG, "(Send Packet) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);
                 }
             }
             
@@ -412,8 +412,8 @@ void *receive_ack (void *arguments)                                             
         }
         graphCwnd();
         
-        if (ack_temp == window_packets[0]->hdr.seqno)
-        // if (ack_temp == send_base)                                                      // received a duplicate ACK
+        // if (ack_temp == window_packets[0]->hdr.seqno)
+        if (ack_temp == send_base)                                                      // received a duplicate ACK
         {
             // if (ack_temp - window_packets[0]->hdr.data_size == 0) {
             //     VLOG(INFO, "received zero ack from client!!!!!");
@@ -463,9 +463,9 @@ void *receive_ack (void *arguments)                                             
                 // printf("2\n");
                 // printf("Por position %d, if %d == %d and %d >= %d\n", i, window_packets[i]->hdr.seqno, ack_temp - window_packets[i]->hdr.data_size, ack_temp, send_base);
                 // printf("ACK received for seqno: %d\nSeqno: %d\nSend base: %d\n",ack_temp - window_packets[i]->hdr.data_size, window_packets[i]->hdr.ackno, send_base);
-                // if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && ack_temp > send_base && send_base <= window_packets[i]->hdr.seqno)    // find the position of the window that contains the packet for the ACK received                
+                if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && ack_temp > send_base && send_base <= window_packets[i]->hdr.seqno)    // find the position of the window that contains the packet for the ACK received                
                 // if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && send_base <= window_packets[i]->hdr.seqno)    // find the position of the window that contains the packet for the ACK received
-                if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && ack_temp > window_packets[0]->hdr.seqno && window_packets[0]->hdr.seqno <= window_packets[i]->hdr.seqno) 
+                // if (window_packets[i]->hdr.seqno == ack_temp - window_packets[i]->hdr.data_size && ack_temp > window_packets[0]->hdr.seqno && window_packets[0]->hdr.seqno <= window_packets[i]->hdr.seqno) 
                 {
                     // RECALCULATE TIMEOUT INTERVAL
                     if (resend_ack == 0)
@@ -484,7 +484,7 @@ void *receive_ack (void *arguments)                                             
                     }
                     // printf("3\n");
                     int tempSB = send_base;
-                    // send_base = window_packets[i]->hdr.seqno+window_packets[i]->hdr.data_size;  
+                    send_base = window_packets[i]->hdr.seqno+window_packets[i]->hdr.data_size;  
                     VLOG(DEBUG, "Value of window packet[i]: %d", window_packets[i]->hdr.seqno);
 
                     if (tempSB != send_base) {
@@ -519,7 +519,7 @@ void *receive_ack (void *arguments)                                             
                     }
                     VLOG(INFO, "]");
                     if (window_packets[0]) {
-                        VLOG(DEBUG, "Value of window packet[0]: %d", window_packets[0]->hdr.seqno);
+                        // VLOG(DEBUG, "Value of window packet[0]: %d", window_packets[0]->hdr.seqno);
                     }
                     
                     if (window_packets[0] == NULL || window_packets[0] < 0)                                      // if the first element has been acknowledged, list is empty, so stop timer until further notice
