@@ -42,7 +42,6 @@ struct timeval time_list[MAX_WINDOW];                                           
 struct timeval current_time;
 struct timeval buff_time_list[MAX_WINDOW];
 int resend_ack = 0;
-int ack_list[3] = [-1,-2,-3];
 // ================ 
 
 int next_seqno = 0;
@@ -138,82 +137,41 @@ void init_timer(int delay, void (*sig_handler)(int))                            
     sigaddset(&sigmask, SIGALRM);
 }
 
-void check_acks()
+void resend_three_ack()                                                                 // resend the first packet in case a packet is lost. We decided to do another diffferetne 
 {
-    if (ack_list[0] == ack_list[1] && ack_list[1] == ack_list[2])                       // three duplicate acks
+    
+    printf("seqno triple ACK: %d\n", window_packets[0]->hdr.seqno);
+    sndpkt = window_packets[0];                                                         /* packet object to be sent is set to current element in the window and then sent to receiver                                          
+                                                                                        fetch the packet from the list of pointers containing the packets */
+    resend_ack = 1;
+    if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
+        error("sendto");
+
+    // loc_buff_pkt++;
+     for (int i=0;i<MAX_WINDOW;i++) 
     {
-        stop_timer();
-        for (int i=0;i<cwnd;i++) 
+        if (buff_packets[i] == NULL)
         {
-            if (ack_list[0] == window_packets[i]->hdr.seqno) 
-            {
-                VLOG(DEBUG,"TRIPLE ACK FOUND! PACKET LOST: %d", window_packets[i]->hdr.seqno);
-                sndpkt = window_packets[i];
-                resend_ack = 1;
-                if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
-                    error("sendto");
-                for (int j=0;j<MAX_WINDOW;j++) 
-                {
-                    if (buff_packets[j] == NULL)
-                    {
-                        loc_buff_pkt = j;
-                        break;
-                    }
-                }
-                for (int j=1;j<cwnd;j++) 
-                {
-                    if (window_packets[j]) {
-                        buff_packets[loc_buff_pkt] = window_packets[j];
-                        buff_time_list[loc_buff_pkt++] = time_list[j];
-                        window_packets[j] = NULL;
-                    }
-                }
-                ssthresh = MAX(cwnd/2, 2);
-                cwnd = 1; 
-                stage = 0; 
-                graphCwnd(); 
-                start_timer();
-                break;
-            }
+            loc_buff_pkt = i;
+            break;
         }
     }
-}
-
-// void resend_three_ack()                                                                 // resend the first packet in case a packet is lost. We decided to do another diffferetne 
-// {
-    
-//     printf("seqno triple ACK: %d\n", window_packets[0]->hdr.seqno);
-//     sndpkt = window_packets[0];                                                         /* packet object to be sent is set to current element in the window and then sent to receiver                                          
-//                                                                                         fetch the packet from the list of pointers containing the packets */
-//     resend_ack = 1;
-//     if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
-//         error("sendto");
-
-//     // loc_buff_pkt++;
-//      for (int i=0;i<MAX_WINDOW;i++) 
-//     {
-//         if (buff_packets[i] == NULL)
-//         {
-//             loc_buff_pkt = i;
-//             break;
-//         }
-//     }
-//     for (int i=1;i<cwnd;i++) 
-//     {
-//         if (window_packets[i]) {
-//             buff_packets[loc_buff_pkt] = window_packets[i];
-//             buff_time_list[loc_buff_pkt++] = time_list[i];
-//             window_packets[i] = NULL;
-//         }
+    for (int i=1;i<cwnd;i++) 
+    {
+        if (window_packets[i]) {
+            buff_packets[loc_buff_pkt] = window_packets[i];
+            buff_time_list[loc_buff_pkt++] = time_list[i];
+            window_packets[i] = NULL;
+        }
         
-//         // time_list[i] = NULL;
-//     }
-//     ssthresh = MAX(cwnd/2, 2);
-//     cwnd = 1; 
-//     stage = 0; 
-//     graphCwnd(); 
-//     start_timer();
-// }
+        // time_list[i] = NULL;
+    }
+    ssthresh = MAX(cwnd/2, 2);
+    cwnd = 1; 
+    stage = 0; 
+    graphCwnd(); 
+    start_timer();
+}
 
 void *send_packet (void *arguments)                                                     // core function of this program, where a while loop keeps running trying to always send packets if possible
 {
@@ -455,51 +413,45 @@ void *receive_ack (void *arguments)                                             
         graphCwnd();
         
         // if (ack_temp == window_packets[0]->hdr.seqno)
-        // if (ack_temp == send_base)                                                      // received a duplicate ACK
-        // {
-        //     // if (ack_temp - window_packets[0]->hdr.data_size == 0) {
-        //     //     VLOG(INFO, "received zero ack from client!!!!!");
-        //     //     window_packets[0] = NULL;
-        //     //     stop_timer(); 
-        //     //     break;
-        //     // }
-        //     VLOG(INFO,"    > Duplicate ACK");
-        //     num_duplicate += 1;                                                         // increase the counter by 1
-        //     if (num_duplicate == 3)                                                     // if it is a triple ACK, then a packet must be lost
-        //     {
-        //         VLOG(INFO,"    > Triple duplicate ACK");
-        //         // FAST RETRANSMIT PHASE                                                // enter the fast retransmit stage
-        //         stop_timer();
-        //         for (int i=0;i<MAX_WINDOW;i++) 
-        //         {
-        //             if (buff_packets[i] == NULL)
-        //             {
-        //                 loc_buff_pkt = i;
-        //                 break;
-        //             }
-        //         }
-        //         for (int i=1;i<cwnd;i++) 
-        //         {
-        //             buff_packets[loc_buff_pkt] = window_packets[i];
-        //             buff_time_list[loc_buff_pkt++] = time_list[i];
-        //             window_packets[i] = NULL;
-        //             // time_list[i] = NULL;
-        //         }
-        //                                                                     // go back to slow start phase
-        //                                                               // change the counter back to 0 after the fast retransmit phase
-        //         resend_three_ack();
-        //         usleep(1000);
-        //         num_duplicate = 0;
-        //         // continue;
-        //     }
+        if (ack_temp == send_base)                                                      // received a duplicate ACK
+        {
+            // if (ack_temp - window_packets[0]->hdr.data_size == 0) {
+            //     VLOG(INFO, "received zero ack from client!!!!!");
+            //     window_packets[0] = NULL;
+            //     stop_timer(); 
+            //     break;
+            // }
+            VLOG(INFO,"    > Duplicate ACK");
+            num_duplicate += 1;                                                         // increase the counter by 1
+            if (num_duplicate == 3)                                                     // if it is a triple ACK, then a packet must be lost
+            {
+                VLOG(INFO,"    > Triple duplicate ACK");
+                // FAST RETRANSMIT PHASE                                                // enter the fast retransmit stage
+                stop_timer();
+                for (int i=0;i<MAX_WINDOW;i++) 
+                {
+                    if (buff_packets[i] == NULL)
+                    {
+                        loc_buff_pkt = i;
+                        break;
+                    }
+                }
+                for (int i=1;i<cwnd;i++) 
+                {
+                    buff_packets[loc_buff_pkt] = window_packets[i];
+                    buff_time_list[loc_buff_pkt++] = time_list[i];
+                    window_packets[i] = NULL;
+                    // time_list[i] = NULL;
+                }
+                                                                            // go back to slow start phase
+                                                                      // change the counter back to 0 after the fast retransmit phase
+                resend_three_ack();
+                usleep(1000);
+                num_duplicate = 0;
+                // continue;
+            }
             
-        // }
-        ack_list[0] = ack_list[1];
-        ack_list[1] = ack_list[2];
-        ack_list[2] = ack_temp;
-        check_acks();
-        usleep(1000);
-
+        }
         // ===========================
         // printf("1\n");
 
