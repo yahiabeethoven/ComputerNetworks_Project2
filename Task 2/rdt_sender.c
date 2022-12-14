@@ -28,10 +28,12 @@ float cwnd = 1;                                                                 
 int ssthresh = 0;                                                                       // create the slow-start threshold, which will be set to 64 when the program starts
 int stage = 0;                                                                          // allows the program to know which stage of the process it's in: (0) Slow-start, (1) Congestion avoidance, (2) Fast retransmit
 int loc_buff_pkt = -1;
+int ret_three_ack;
                                                                             
 tcp_packet *buff_packets[MAX_WINDOW];                                                   /* These variable is created solely to be adjusted to our coding style. When the value of cwnd is decreased there may be some 
                                                                                         packets in the sliding window with value > cwnd that are "lost" in a way, so we decided to move them to another list so the sender can fetch
                                                                                         from this list instead of from the file, and when these list is empty it can stat fetching from the file again */
+tcp_packet *temp_pkt;
 double estimated_rtt = -1;                                                              // variable to calculate the timeout interval for the timer
 double timeout_interval = 3000;                                                         // value at which to set the timer for the timeout timer
 double sample_rtt = 0;                                                                  // RTT calculated for every successfuly received ACK
@@ -42,7 +44,7 @@ struct timeval time_list[MAX_WINDOW];                                           
 struct timeval current_time;
 struct timeval buff_time_list[MAX_WINDOW];
 int resend_ack = 0;
-int ack_list[3] = [-1,-2,-3];
+int ack_list[3] = {-1,-2,-3};
 // ================ 
 
 int next_seqno = 0;
@@ -123,6 +125,24 @@ void resend_packets(int sig)                                                    
         else {
             // VLOG(INFO, "timeout occurred during congestion avoidance!!!");
         }
+        printf("\n(RE-SEND Packets)\n");
+        printf("buffer packets: ["); 
+        for (int j=0;j<MAX_WINDOW;j++) 
+            {
+                if (buff_packets[j] != NULL)
+                {
+                    printf("%d, ",buff_packets[j]->hdr.seqno);
+                }
+            }
+        printf("]\n");
+        printf("window packets: [");
+            for (int j=0;j<cwnd;j++) 
+            {
+                if (window_packets[j]) {
+                    printf("%d, ",window_packets[j]->hdr.seqno);
+                }
+            } 
+        printf("]\n");  
     }
 }
 
@@ -138,13 +158,28 @@ void init_timer(int delay, void (*sig_handler)(int))                            
     sigaddset(&sigmask, SIGALRM);
 }
 
-void check_acks()
+int check_acks()
 {
     if (ack_list[0] == ack_list[1] && ack_list[1] == ack_list[2])                       // three duplicate acks
     {
         stop_timer();
         for (int i=0;i<cwnd;i++) 
         {
+            if (window_packets[i] == NULL)
+            {
+                VLOG(INFO,"IT WAS NOT FOUND IN THE WINDOW");
+                for (int j=0;j<MAX_WINDOW;j++)
+                {
+                    if (buff_packets[j] != NULL) 
+                    {
+                        if (buff_packets[j]->hdr.seqno == ack_list[0])
+                        {
+                            printf("IT WAS THERE!\n");
+                        }
+                    }
+                }
+                break;
+            }
             if (ack_list[0] == window_packets[i]->hdr.seqno) 
             {
                 VLOG(DEBUG,"TRIPLE ACK FOUND! PACKET LOST: %d", window_packets[i]->hdr.seqno);
@@ -152,30 +187,48 @@ void check_acks()
                 resend_ack = 1;
                 if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
                     error("sendto");
-                for (int j=0;j<MAX_WINDOW;j++) 
+                for (int j=1;j<MAX_WINDOW;j++) 
                 {
-                    if (buff_packets[j] == NULL)
+                    if (window_packets[j] == NULL)
                     {
-                        loc_buff_pkt = j;
+                        loc_buff_pkt = j-1;
                         break;
                     }
                 }
-                for (int j=1;j<cwnd;j++) 
+                for (int j=loc_buff_pkt;j>=0;j--) 
                 {
-                    if (window_packets[j]) {
-                        buff_packets[loc_buff_pkt] = window_packets[j];
-                        buff_time_list[loc_buff_pkt++] = time_list[j];
+                    if (window_packets[j]) 
+                    {
+                        temp_pkt = buff_packets[1];
+                        for (int k=1;k<MAX_WINDOW;k++)
+                        {
+                            temp_pkt = buff_packets[k];
+                            buff_packets[k] = buff_packets[k-1];
+                            buff_packets[0]= NULL;
+                        }
+                        buff_packets[0] = window_packets[j];
                         window_packets[j] = NULL;
                     }
+                    // if (window_packets[j]) {
+                    //     buff_packets[loc_buff_pkt] = window_packets[j];
+                    //     buff_time_list[loc_buff_pkt++] = time_list[j];
+                    //     window_packets[j] = NULL;
+                    // }
                 }
                 ssthresh = MAX(cwnd/2, 2);
                 cwnd = 1; 
                 stage = 0; 
                 graphCwnd(); 
                 start_timer();
+            
                 break;
             }
         }
+        return (1);
+    }
+    else
+    {
+        return (0);
     }
 }
 
@@ -248,6 +301,7 @@ void *send_packet (void *arguments)                                             
             if (buff_packets[0] == NULL)                                                // if there is any packet in the buff of packets made when the cwnd was recuced, then take the data from there instead
                 len = fread(buffer, 1, DATA_SIZE, fp);                                  // read a number of DATA_SIZE bytes from the file
             else {
+                printf("First buffer element is: %d\n",buff_packets[0]->hdr.seqno);
                 len = buff_packets[0]->hdr.data_size;
                 if (len > 0) {
                     next_seqno = buff_packets[0]->hdr.seqno;
@@ -396,8 +450,26 @@ void *send_packet (void *arguments)                                             
             // else
             //     printf("%d]\n", window_packets[floor_int-1]->hdr.seqno);
             // ==================================
+            printf("\n(Send Packets)\n");
+            printf("buffer packets: ["); 
+            for (int j=0;j<MAX_WINDOW;j++) 
+                {
+                    if (buff_packets[j] != NULL)
+                    {
+                        printf("%d, ",buff_packets[j]->hdr.seqno);
+                    }
+                }
+            printf("]\n");
+            printf("window packets: [");
+                for (int j=0;j<cwnd;j++) 
+                {
+                    if (window_packets[j]) {
+                        printf("%d, ",window_packets[j]->hdr.seqno);
+                    }
+                } 
+            printf("]\n");                                        // after all changes to the window arrays, we should now unlock the lock to allow the receiver to make necessary changes when needed
+            pthread_mutex_unlock(&lock); 
             
-            pthread_mutex_unlock(&lock);                                                // after all changes to the window arrays, we should now unlock the lock to allow the receiver to make necessary changes when needed
         }
         usleep(100);
     }
@@ -411,7 +483,7 @@ void *receive_ack (void *arguments)                                             
     
     int ack_temp = -1;                                                                  // initialize ack local var to -1, and the buffer containing the data contents 
     char buffer[DATA_SIZE]; 
-    int num_duplicate = 0;                                                              // counts the number of times a duplicate ACK has been received, so when it gets to three we do something about it
+    // int num_duplicate = 0;                                                              // counts the number of times a duplicate ACK has been received, so when it gets to three we do something about it
 
     // int example = 0;
     while (1) 
@@ -426,7 +498,7 @@ void *receive_ack (void *arguments)                                             
         recvpkt = (tcp_packet *)buffer;                                                 // create a packet with the data received by the receiver
         assert(get_data_size(recvpkt) <= DATA_SIZE);
         ack_temp = recvpkt->hdr.ackno; 
-        VLOG(DEBUG, "Received: %d, send base: %d",recvpkt->hdr.ackno, send_base);                                                 // assign the acknowledgment recived to the local variable containing the variable
+        // VLOG(DEBUG, "Received: %d, send base: %d",recvpkt->hdr.ackno, send_base);                                                 // assign the acknowledgment recived to the local variable containing the variable
 
         pthread_mutex_lock(&lock);                                                      // we need to lock because the window arrays will be amended
         // printf("received ACK with value %d\n", recvpkt->hdr.ackno);
@@ -449,7 +521,7 @@ void *receive_ack (void *arguments)                                             
             //     stage += 1; 
             if (cwnd == ssthresh)  {                                                      // if the cwnd is equal to the slow start threshold, then enter congestion control
                 stage += 1;  
-                VLOG(INFO, "stage has been increased"); 
+                // VLOG(INFO, "stage has been increased"); 
             }                                                            // increase the stage by 1, which means reaching congestion control
         }
         graphCwnd();
@@ -497,7 +569,30 @@ void *receive_ack (void *arguments)                                             
         ack_list[0] = ack_list[1];
         ack_list[1] = ack_list[2];
         ack_list[2] = ack_temp;
-        check_acks();
+        ret_three_ack= check_acks();
+        if (ret_three_ack == 1)
+        {
+            printf("\n(Three ACKs)\n");
+            printf("buffer packets: ["); 
+            for (int j=0;j<MAX_WINDOW;j++) 
+                {
+                    if (buff_packets[j] != NULL)
+                    {
+                        printf("%d, ",buff_packets[j]->hdr.seqno);
+                    }
+                }
+            printf("]\n");
+            printf("window packets: [");
+                for (int j=0;j<cwnd;j++) 
+                {
+                    if (window_packets[j]) {
+                        printf("%d, ",window_packets[j]->hdr.seqno);
+                    }
+                } 
+            printf("]\n");                                          // after all changes to the window arrays, we should now unlock the lock to allow the receiver to make necessary changes when needed
+            pthread_mutex_unlock(&lock);
+            continue;
+        }
         usleep(1000);
 
         // ===========================
@@ -533,20 +628,20 @@ void *receive_ack (void *arguments)                                             
                     // printf("3\n");
                     int tempSB = send_base;
                     send_base = window_packets[i]->hdr.seqno+window_packets[i]->hdr.data_size;  
-                    VLOG(DEBUG, "Value of window packet[i]: %d", window_packets[i]->hdr.seqno);
+                    // VLOG(DEBUG, "Value of window packet[i]: %d", window_packets[i]->hdr.seqno);
 
-                    if (tempSB != send_base) {
-                        VLOG(DEBUG, "(Receive ack) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);                                   // the send base will always be the first element in the window
-                    }                         // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
+                                            // say the k position was found, then all of the k-1 positions are also ACK'ed by the ACK received, so let the base be the packet for which the ACK was just received
                     // printf("5\n");
                     VLOG(DEBUG, "> Received successful ACK for packet %d", ack_temp - window_packets[i]->hdr.data_size);    // indicate packet ACK has been successfully received
                     stop_timer();
-                    VLOG(INFO, "WIndow Packets: [");
+                    // VLOG(INFO, "WIndow Packets: [");
+                    // printf("Window Packets : [");
                     for (int j = i+1; j<floor(cwnd); j++) 
                     {
                         if (window_packets[j] != NULL)
                         {
-                            VLOG(DEBUG, "%d, ",window_packets[j]->hdr.seqno);
+                            // printf("%d, ",window_packets[j]->hdr.seqno);
+                            // VLOG(DEBUG, "%d, ",window_packets[j]->hdr.seqno);
                             window_packets[j-i-1] = window_packets[j];                  // move up all of the packets to let the i position be first
                             time_list[j-i-1] = time_list[j];
                             window_packets[j] = NULL;                                   // move up all of the packets to let the i position be first
@@ -565,7 +660,11 @@ void *receive_ack (void *arguments)                                             
                         
                         // printf("7\n");
                     }
-                    VLOG(INFO, "]");
+                    // printf("]\n");
+                    if (tempSB != send_base) {
+                        VLOG(DEBUG, "(Receive ack) SEND BASE CHANGED FROM %d TO %d",tempSB, send_base);                                   // the send base will always be the first element in the window
+                    } 
+                    // VLOG(INFO, "]");
                     if (window_packets[0]) {
                         // VLOG(DEBUG, "Value of window packet[0]: %d", window_packets[0]->hdr.seqno);
                     }
@@ -609,7 +708,24 @@ void *receive_ack (void *arguments)                                             
 
         }
         
-        
+        printf("\n(Receive ACK)\n");
+        printf("buffer packets: ["); 
+        for (int j=0;j<MAX_WINDOW;j++) 
+            {
+                if (buff_packets[j] != NULL)
+                {
+                    printf("%d, ",buff_packets[j]->hdr.seqno);
+                }
+            }
+        printf("]\n");
+        printf("window packets: [");
+            for (int j=0;j<cwnd;j++) 
+            {
+                if (window_packets[j]) {
+                    printf("%d, ",window_packets[j]->hdr.seqno);
+                }
+            } 
+        printf("]\n");  
         pthread_mutex_unlock(&lock);   
         // VLOG(INFO, "unlocked lock");    // indicate packet ACK has been successfully received
                                                  // no longer need to lock the window arrays after breaking outside the for loop
