@@ -7,6 +7,10 @@ from argparse import ArgumentParser
 import re
 from math import floor
 
+# this program plots the change in value of cwnd over time
+# rather than having time in seconds as the x-axis, we have an incremental count of every time cwnd has changed
+# this program differs from program 1 in that it only updates the graph when all of the window packets of an iteration have updated, 
+# so it looks more steeper with no plateau of changes
 def scale(a):
     return a/1000000.0
 
@@ -20,10 +24,6 @@ parser.add_argument('--name', '-n',
                     help="name of the experiment",
                     required=True)
 
-# parser.add_argument('--trace', '-tr',
-#                     help="name of the trace",
-#                     required=True)
-
 args = parser.parse_args()
 
 data = open(args.dir+"/"+str(args.name), 'r')
@@ -31,6 +31,8 @@ cnt = 0
 cntList = []
 cwndList = []
 cwndBefore = -1
+
+# store an integer value of each cwnd, and replace each timestamp with an incremental index counter for each time the window value changed
 for line in data:
     dataLine = line.strip().split(",")
     cwndValue = dataLine[1]
@@ -47,11 +49,10 @@ f.set_figheight(2)
 
 #window
 plt.plot(cntList, cwndList, label = "CWND")
-# #thresh
-# plt.plot(data['time'], data['ssthresh'], label = "SS Threshold")
 plt.legend()
 
 plt.xlabel("Count of cwnd")
+# only print the first 300 because the count is too large to be visible
 plt.xlim([0,300])
 plt.title("CWND")
 plt.savefig(args.dir+'/cwndGraph2.png',dpi=150,bbox_inches='tight')
