@@ -143,6 +143,7 @@ void resend_packets(int sig)                                                    
                         break;
                     }
                 }
+
                 cwnd = 1;
                 ssthresh = MAX(cwnd/2, 2);
                 graphCwnd();

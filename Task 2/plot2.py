@@ -30,10 +30,13 @@ data = open(args.dir+"/"+str(args.name), 'r')
 cnt = 0
 cntList = []
 cwndList = []
-
+cwndBefore = -1
 for line in data:
     dataLine = line.strip().split(",")
     cwndValue = dataLine[1]
+    if floor(float(cwndValue)) == cwndBefore:
+        continue
+    cwndBefore = floor(float(cwndValue))
     cnt+= 1 
     cntList.append(cnt)
     cwndList.append(int(floor(float(cwndValue))))
@@ -51,5 +54,5 @@ plt.legend()
 plt.xlabel("Count of cwnd")
 plt.xlim([0,300])
 plt.title("CWND")
-plt.savefig(args.dir+'/cwndGraph.png',dpi=150,bbox_inches='tight')
+plt.savefig(args.dir+'/cwndGraph2.png',dpi=150,bbox_inches='tight')
 
