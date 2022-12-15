@@ -644,7 +644,7 @@ void *receive_ack (void *arguments)                                             
                     {
                         // finisher = 1;
                         // send_base = window_packets[0]->hdr.seqno;
-                        printf("Happens here!\n");
+                        // printf("Happens here!\n");
                         stop_timer(); 
                         break;
                     }
