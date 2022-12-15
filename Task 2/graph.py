@@ -27,20 +27,20 @@ ax = plt.gca()
 
 
 # plotting the trace file
-f1 = open (args.trace,"r")
-BW = []
-nextTime = 1000
-cnt = 0
-for line in f1:
-    if int(line.strip()) > nextTime:
-        BW.append(cnt*1492*8)
-        cnt = 0
-        nextTime+=1000
-    else:
-        cnt+=1
-f1.close()
+# f1 = open (args.trace,"r")
+# BW = []
+# nextTime = 1000
+# cnt = 0
+# for line in f1:
+#     if int(line.strip()) > nextTime:
+#         BW.append(cnt*1492*8)
+#         cnt = 0
+#         nextTime+=1000
+#     else:
+#         cnt+=1
+# f1.close()
 
-ax.fill_between(range(len(BW)), 0, list(map(scale,BW)),color='#D3D3D3')
+# ax.fill_between(range(len(BW)), 0, list(map(scale,BW)),color='#D3D3D3')
 
 # plotting throughput
 throughputDL = []
@@ -50,17 +50,17 @@ traceDL = open (args.dir+"/"+str(args.name), 'r')
 traceDL.readline()
 
 tmp = traceDL.readline().strip().split(",")
-bytes = int(tmp[1])
+bytes = int(float(tmp[1]))
 startTime = float(tmp[0])
 stime=float(startTime)
 
 for time in traceDL:
     if (float(time.strip().split(",")[0]) - float(startTime)) <= 1.0:
-        bytes += int(time.strip().split(",")[1])
+        bytes += int(float(time.strip().split(",")[1]))
     else:
         throughputDL.append(bytes*8/1000000.0)
         timeDL.append(float(startTime)-stime)
-        bytes = int(time.strip().split(",")[1])
+        bytes = int(float(time.strip().split(",")[1]))
         startTime += 1.0
 
 print (timeDL)
