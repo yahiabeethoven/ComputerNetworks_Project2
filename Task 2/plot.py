@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.pyplot import figure
 import sys
+import csv
 from argparse import ArgumentParser
 import re
 

@@ -24,8 +24,8 @@
 
 // ================ 
 // VARIABLES DEFINED FOR TASK 2
-float cwnd = 1;                                                                         // create a float variable to store the cwnd. It needs to tbe a float because in congestion avoidance the cwnd is increased by 1/cwnd
-int ssthresh = 0;                                                                       // create the slow-start threshold, which will be set to 64 when the program starts
+int cwnd = 1;                                                                         // create a float variable to store the cwnd. It needs to tbe a float because in congestion avoidance the cwnd is increased by 1/cwnd
+int ssthresh = 64;                                                                       // create the slow-start threshold, which will be set to 64 when the program starts
 int stage = 0;                                                                          // allows the program to know which stage of the process it's in: (0) Slow-start, (1) Congestion avoidance, (2) Fast retransmit
 int loc_buff_pkt = -1;
 int ret_three_ack;
@@ -42,10 +42,12 @@ double alpha = 0.125;                                                           
 double beta = 0.25;
 struct timeval time_list[MAX_WINDOW];                                                   // list in which to store all of the time sent for the packets
 struct timeval current_time;
+struct timeval graph_time;
 struct timeval buff_time_list[MAX_WINDOW];
 struct timeval temp_time;
 int resend_ack = 0;
 int ack_list[3] = {-1,-2,-3};
+void graphCwnd();
 // ================ 
 
 int next_seqno = 0;
@@ -212,6 +214,7 @@ int check_acks()
                 VLOG(DEBUG,"TRIPLE ACK FOUND! PACKET LOST: %d", window_packets[i]->hdr.seqno);
                 sndpkt = window_packets[i];
                 resend_ack = 1;
+                graphCwnd();
                 if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, ( const struct sockaddr *)&serveraddr, serverlen) < 0)
                     error("sendto");
                 
@@ -273,7 +276,7 @@ int check_acks()
                 ssthresh = MAX(cwnd/2, 2);
                 cwnd = 1; 
                 stage = 0; 
-                graphCwnd(); 
+                // graphCwnd(); 
                 start_timer();
             
                 break;
@@ -684,7 +687,7 @@ void *receive_ack (void *arguments)                                             
                         else
                         {
                             estimated_rtt = (1-alpha)*estimated_rtt + alpha * sample_rtt;
-                            dev_rtt = (1-beta) * dev_rtt + beta * abs(sample_rtt - estimated_rtt);
+                            dev_rtt = (1-beta) * dev_rtt + beta * fabs(sample_rtt - estimated_rtt);
                         }
                         timeout_interval = estimated_rtt + 4 * dev_rtt;
                     }
@@ -814,13 +817,13 @@ void graphCwnd() {
         
         gettimeofday(&innerTime,0);
         
-        timeToPrint = (innerTime.tv_sec - current_time.tv_sec) * 1000.0f + (innerTime.tv_usec - current_time.tv_usec) / 1000.0f;
+        timeToPrint = (innerTime.tv_sec - graph_time.tv_sec) * 1000.0f + (innerTime.tv_usec - graph_time.tv_usec) / 1000.0f;
     }
     else {
         VLOG(INFO,"could not write into CWND file");
         exit(1);
     }
-    fprintf(cwndFile,"%f,%f,%d\n",timeToPrint,cwnd,ssthresh);
+    fprintf(cwndFile,"%f,%d,%d\n",timeToPrint,cwnd,ssthresh);
     // VLOG(INFO,"printed to file: %f, %f, %d", timeToPrint,cwnd,ssthresh);
     fclose(cwndFile);
     // VLOG(INFO, "closed cwnd file properly");
@@ -832,6 +835,8 @@ int main (int argc, char **argv)
     int portno;
     char *hostname;
     FILE *fp;
+
+    gettimeofday(&graph_time,0);
 
     if (argc != 4) {                                                                    // check command line arguments
         fprintf(stderr,"usage: %s <hostname> <port> <FILE>\n", argv[0]);

@@ -36,7 +36,7 @@ tcp_packet *window_packets[window_size];                                        
 int lens[window_size];
 int stopTimer;                                                                          // if the receiver side recives an ACK, then stop the timer
 int end_loop = 0;
-
+void *receive_ack (void *arguments);
 // lock to only allow exclusive access for sender or receiver to the window at a given moment
 pthread_mutex_t lock;
 
